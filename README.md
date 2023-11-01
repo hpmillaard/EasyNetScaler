@@ -1,5 +1,4 @@
 # EasyNetScaler
-NetScaler easy management
 
 This script has several options to backup, clean and upgrade your NetScaler. If no commandline options are given or you just run the script through the right click menu in explorer, the script will show a GUI.
 
