@@ -13,4 +13,5 @@ Upgrade the NetScaler with the firmware: .\EasyNetScaler.ps1 -Username nsroot -P
 Backup, Clean the FileSystem and upgrade the NetScaler with the firmware: .\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Backup -Clean -Firmware C:\Temp\Build-14.1-8.50_nc_64.tgz
 
 The GUI:
-![EasyNetScaler.ps1 screenshot](https://github.com/hpmillaard/EasyNetScaler/blob/master/EasyNetScaler.gif?raw=true)
+
+![EasyNetScaler.ps1 screenshot](https://github.com/hpmillaard/EasyNetScaler/blob/main/EasyNetScaler.gif?raw=true)
