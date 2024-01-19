@@ -2,7 +2,7 @@
 .SYNOPSIS
 	Create a backup of your NetScaler. Perform an Upgrade of your NetScaler. Clean the filesystem of your NetScaler.
 .DESCRIPTION
-	This script has several options to backup, upgrade or clean your NetScaler. If no commandline options are given, the script will show a GUI.
+	This script has several options to backup, clean and upgrade your NetScaler. If no commandline options are given or you just run the script through the right click menu in explorer, the script will show a GUI.
 .PARAMETER Help
 	Display the detailed information about this script
 .PARAMETER Username
@@ -17,6 +17,11 @@
 	Create a Backup from the ns.conf
 .PARAMETER FirmwareFile
 	The path to the firmware file
+.PARAMETER Failovertime
+	The date and time that the failover has to occur
+.EXAMPLE
+	.\EasyNetScaler.ps1
+	Open the GUI
 .EXAMPLE
 	.\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1
 	Display GUI with prefilled values
@@ -30,14 +35,11 @@
 	.\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Clean
 	Cleanup the NetScaler filesystem
 .EXAMPLE
-	.\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Clean -Firmware C:\Temp\Build-14.1-8.50_nc_64.tgz
-	Clean the FileSystem and upgrade the NetScaler with the firmware
-.EXAMPLE
 	.\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Firmware C:\Temp\Build-14.1-8.50_nc_64.tgz
 	Upgrade the NetScaler with the firmware
 .EXAMPLE
-	.\EasyNetScaler.ps1
-	Open the GUI
+	.\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Backup -Clean -Firmware C:\Temp\Build-14.1-8.50_nc_64.tgz
+	Backup, Clean the FileSystem and upgrade the NetScaler with the firmware
 .NOTES
 	File name	:	EasyNetScaler.ps1
 	Version		:	1.0
@@ -59,7 +61,8 @@ param(
 	[switch]$Backup,
 	[switch]$Config,
 	[switch]$Clean,
-	[string]$Firmware
+	[string]$Firmware,
+	[datetime]$Failovertime
 )
 
 $ptxt = ".\putty.txt"
@@ -72,6 +75,39 @@ del $ptxt, $plog -EA 0
 Add-Type -AN System.Windows.Forms
 Add-Type -AN System.Drawing
 function msgbox($Text){$r=[System.Windows.Forms.MessageBox]::Show($Text, $Text, [System.Windows.Forms.MessageBoxButtons]::OK)}
+
+function New-Label($Label, $X, $Y, $Width, $Height, $FontSize, $FontStyle){
+	$LabelControl = New-Object System.Windows.Forms.Label
+	$LabelControl.Location = New-Object System.Drawing.Point $X, $Y
+	$LabelControl.Size = New-Object System.Drawing.Size $Width, $Height
+	$LabelControl.Text = $Label
+	$LabelControl.Font = New-Object System.Drawing.Font("Arial",$FontSize,[System.Drawing.FontStyle]::$FontStyle)
+	$Form.Controls.Add($LabelControl)
+}
+function New-TextBox($X, $Y, $Width, $Height){
+	$TB = New-Object System.Windows.Forms.TextBox
+	$TB.Location = New-Object System.Drawing.Point $X, $Y
+	$TB.Size = New-Object System.Drawing.Size $Width, $Height
+	$Form.Controls.Add($TB)
+	return $TB
+}
+function New-Button($Text, $X, $Y, $Width, $Height){
+	$Button = New-Object System.Windows.Forms.Button
+	$Button.Location = New-Object System.Drawing.Point $X, $Y
+	$Button.Size = New-Object System.Drawing.Size $Width, $Height
+	$Button.Text = $Text
+	$Form.Controls.Add($Button)
+	return $Button
+}
+function New-RadioButton($Text, $X, $Y, $Width, $Height, $Checked){
+	$RadioButton = New-Object System.Windows.Forms.RadioButton
+	$RadioButton.Location = New-Object System.Drawing.Point $X, $Y
+	$RadioButton.Size = New-Object System.Drawing.Size $Width, $Height
+	$RadioButton.Text = $Text
+	$RadioButton.Checked = $Checked
+	$Form.Controls.Add($RadioButton)
+	return $RadioButton
+}
 
 function Check{
 	param($U,$P,$IP)
@@ -157,7 +193,9 @@ Function Upgrade-NS{
 			$FileBrowser.Filter = "TGZ Files|build-*_nc_64.tgz"
 			$null = $FileBrowser.ShowDialog()
 			$FW = (gi $FileBrowser.FileName)
-		}Else{$FW = gi $FW}
+		}Else{
+			If (Test-Path $FW){$FW = gi $FW}Else{Break}
+		}
 		$fwbase = $FW.BaseName
 		$fwname = $FW.Name
 		$fwpath = $FW.FullName
@@ -174,7 +212,7 @@ Function Upgrade-NS{
 			If ($Reboot -eq [System.Windows.Forms.DialogResult]::No){return}
 		}
 		Write-Host "Uploading Firmware $($fw.name)" -F green
-		#start $pscp "-scp -batch -P 22 -l $U -pw $P ""$FWPath"" $IP`:/var/nsinstall/$fwbase/$fwname" -NoNewWindow -Wait
+		start $pscp "-scp -batch -P 22 -l $U -pw $P ""$FWPath"" $IP`:/var/nsinstall/$fwbase/$fwname" -NoNewWindow -Wait
 		Write-Host "Upload Completed. Performing Upgrade" -F green
 
 		Sleep 1
@@ -189,62 +227,84 @@ Function Upgrade-NS{
 		Write-host . -F green
 		Stop-Process -Id $process.id -Force
 
-		sc .\upgrade.log (gc $plog | Select-Object -skip ((gc $plog | select-string -pattern start).Linenumber[0] - 1))
+		sc .\upgrade-$IP.log (gc $plog | Select-Object -skip ((gc $plog | select-string -pattern start).Linenumber[0] - 1))
 		If ($Cmdline){
-			$logpath = (gi .\upgrade.log).FullName
+			$logpath = (gi .\upgrade-$IP.log).FullName
 			Write-Host "You can view the logfile $logpath for more details about the upgrade" -F green
 		}Else{
 			$ViewLog = [System.Windows.Forms.MessageBox]::Show("The upgrade completed, do you want to view the logfile?", "View upgrade logfile?", [System.Windows.Forms.MessageBoxButtons]::YesNo)
-			if ($ViewLog -eq [System.Windows.Forms.DialogResult]::Yes){ii .\upgrade.log}
+			if ($ViewLog -eq [System.Windows.Forms.DialogResult]::Yes){ii .\upgrade-$IP.log}
 		}
 	}
 }
 
+Function Failover{
+	param($U,$P,$IP,$FOTime)
+	If (Check -U $U -P $P -IP $IP){
+		If ($FOTime){
+			$selectedDateTime = Get-Date $FOTime
+		} Else {
+			$PlanForm = New-Object System.Windows.Forms.Form
+			$PlanForm.Text = "Plan Forced Failover"
+			$PlanForm.Size = New-Object System.Drawing.Size(350, 150)
+			$PlanForm.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
 
-If ($UserName -and $Password -and $IP -and ($Backup -or $Config -or $Clean -or $Firmware)){
+			$PlanLBL = New-Object System.Windows.Forms.Label
+			$PlanLBL.Location = New-Object System.Drawing.Point 5, 5
+			$PlanLBL.Size = New-Object System.Drawing.Size 350, 30
+			$PlanLBL.Text = "Pick the time for the forced failover"
+			$PlanLBL.Font = New-Object System.Drawing.Font("Arial",14,[System.Drawing.FontStyle]::"bold")
+			$PlanForm.Controls.Add($PlanLBL)
+
+			$dateTimePicker = New-Object System.Windows.Forms.DateTimePicker
+			$dateTimePicker.Format = [System.Windows.Forms.DateTimePickerFormat]::Custom
+			$dateTimePicker.CustomFormat = "yyyy-MM-dd HH:mm"
+			$dateTimePicker.MinDate = (Get-Date).AddMinutes(1)
+			$dateTimePicker.Location = New-Object System.Drawing.Point(10, 40)
+			$PlanForm.Controls.Add($dateTimePicker)
+
+			$OKB = New-Button "OK" 5 70 100 30
+			$OKB.DialogResult = [System.Windows.Forms.DialogResult]::OK
+			$PlanForm.Controls.Add($OKB)
+
+			$CancelB = New-Button "Cancel" 110 70 100 30
+			$CancelB.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+			$PlanForm.Controls.Add($CancelB)
+
+			$result = $PlanForm.ShowDialog()
+			If ($result -eq [System.Windows.Forms.DialogResult]::OK) {$selectedDateTime = $dateTimePicker.Value}
+		}
+		If ($selectedDateTime){
+			$schtime = $selectedDateTime.ToString("HH:mm")
+			$schdate = $selectedDateTime.ToString("dd/MM/yyyy",[System.Globalization.CultureInfo]::InvariantCulture)
+			$schendtime = $selectedDateTime.Addminutes(1).ToString("HH:mm")
+@"
+[System.Net.ServicePointManager]::CheckCertificateRevocationList={`$false}
+[System.Net.ServicePointManager]::ServerCertificateValidationCallback={`$true}
+[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
+irm "https://$IP/nitro/v1/config/login" -Method POST -Body (ConvertTo-JSON @{"login"=@{"username"="$U";"password"="$P";"timeout"="900"}}) -SessionVariable NSSession -ContentType "application/json"
+irm "https://$IP/nitro/v1/config/hafailover?action=force" -Method POST -Body (ConvertTo-Json @{"hafailover"=@{"force"="true"}}) -WebSession `$NSSession -ContentType "application/json"
+irm "https://$IP/nitro/v1/config/logout" -Method POST -Body (ConvertTo-JSON @{"logout"=@{}}) -WebSession `$NSSession -ContentType "application/json"
+schtasks /change /tn NetScaler_Planned_Forced_Failover_$IP /ed $schdate /et $schendtime /Z
+del `$PSScriptRoot\NSForcedFailover.ps1
+"@ | Out-File $ENV:TEMP\NSForcedFailover-$IP.ps1
+			Start cmd "/c schtasks /create /RU SYSTEM /IT /SC ONCE /sd $schdate /st $schtime /tn NetScaler_Planned_Forced_Failover_$IP /F /RL HIGHEST /tr ""powershell.exe -executionpolicy bypass -File $ENV:TEMP\NSForcedFailover-$IP.ps1""" -Verb RunAs
+		}
+	}
+}
+
+If ($UserName -and $Password -and $IP -and ($Backup -or $Config -or $Clean -or $Firmware -or $Failovertime)){
 	$Cmdline = $true
 	If ($Backup){Backup-NS -U $Username -P $Password -IP $IP}
 	If ($Config){Config-NS -U $Username -P $Password -IP $IP}
 	If ($Clean){Clean-NS -U $Username -P $Password -IP $IP}
 	If ($Firmware){Upgrade-NS -U $Username -P $Password -IP $IP -Fw $Firmware}
+	If ($Failovertime){Failover -U $Username -P $Password -IP $IP -FOTime $Failovertime}
 }Else{
 	$Form = New-Object System.Windows.Forms.Form
 	$Form.Text = "Easy NetScaler"
-	$Form.Size = New-Object System.Drawing.Size(230, 220)
+	$Form.Size = New-Object System.Drawing.Size(230, 250)
 	$Form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
-
-	function New-Label($Label, $X, $Y, $Width, $Height, $FontSize, $FontStyle){
-		$LabelControl = New-Object System.Windows.Forms.Label
-		$LabelControl.Location = New-Object System.Drawing.Point $X, $Y
-		$LabelControl.Size = New-Object System.Drawing.Size $Width, $Height
-		$LabelControl.Text = $Label
-		$LabelControl.Font = New-Object System.Drawing.Font("Arial",$FontSize,[System.Drawing.FontStyle]::$FontStyle)
-		$Form.Controls.Add($LabelControl)
-	}
-	function New-TextBox($X, $Y, $Width, $Height){
-		$TB = New-Object System.Windows.Forms.TextBox
-		$TB.Location = New-Object System.Drawing.Point $X, $Y
-		$TB.Size = New-Object System.Drawing.Size $Width, $Height
-		$Form.Controls.Add($TB)
-		return $TB
-	}
-	function New-Button($Text, $X, $Y, $Width, $Height){
-		$Button = New-Object System.Windows.Forms.Button
-		$Button.Location = New-Object System.Drawing.Point $X, $Y
-		$Button.Size = New-Object System.Drawing.Size $Width, $Height
-		$Button.Text = $Text
-		$Form.Controls.Add($Button)
-		return $Button
-	}
-	function New-RadioButton($Text, $X, $Y, $Width, $Height, $Checked){
-		$RadioButton = New-Object System.Windows.Forms.RadioButton
-		$RadioButton.Location = New-Object System.Drawing.Point $X, $Y
-		$RadioButton.Size = New-Object System.Drawing.Size $Width, $Height
-		$RadioButton.Text = $Text
-		$RadioButton.Checked = $Checked
-		$Form.Controls.Add($RadioButton)
-		return $RadioButton
-	}
 
 	New-Label "Easy NetScaler Tool" 10 0 200 25 14 bold
 	New-Label "Username:" 5 30 75 20 10 regular
@@ -277,6 +337,9 @@ If ($UserName -and $Password -and $IP -and ($Backup -or $Config -or $Clean -or $
 	$UpgradeB.Add_Click({Upgrade-NS -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text})
 	$Form.Controls.Add($UpgradeB)
 
+	$PlanFailoverB = New-Button "Plan Forced Failover" 5 170 120 30
+	$PlanFailoverB.Add_Click({Failover -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text})
+	$Form.Controls.Add($PlanFailoverB)
 	$Form.ShowDialog()
 }
 
