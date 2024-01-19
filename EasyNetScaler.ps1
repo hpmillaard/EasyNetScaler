@@ -18,7 +18,7 @@
 .PARAMETER FirmwareFile
 	The path to the firmware file
 .PARAMETER Failovertime
-	The date and time that the failover has to occur
+	The date and time that the failover should occur. A Scheduled task will be created that will run at the planned time.
 .EXAMPLE
 	.\EasyNetScaler.ps1
 	Open the GUI
@@ -38,15 +38,18 @@
 	.\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Firmware C:\Temp\Build-14.1-8.50_nc_64.tgz
 	Upgrade the NetScaler with the firmware
 .EXAMPLE
-	.\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Backup -Clean -Firmware C:\Temp\Build-14.1-8.50_nc_64.tgz
-	Backup, Clean the FileSystem and upgrade the NetScaler with the firmware
+	.\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Failovertime "1-2-2025 18:00"
+	Plan forced failover
+.EXAMPLE
+	.\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Backup -Clean -Firmware C:\Temp\Build-14.1-8.50_nc_64.tgz -Failovertime "1-2-2025 18:00"
+	Backup, Clean the FileSystem and upgrade the NetScaler with the firmware and plan the force failover
 .NOTES
 	File name	:	EasyNetScaler.ps1
-	Version		:	1.0
+	Version		:	1.1
 	Author		:	Harm Peter Millaard
 	Requires	:	PowerShell v5.1 and up
-				ADC 12.1 and higher
-				Internet Connection
+					ADC 12.1 and higher
+					Internet Connection to download putty and pscp
 .LINK
 	https://github.com/hpmillaard/EasyNetScaler
 #>
