@@ -13,10 +13,12 @@ Create a ns.conf backup: .\EasyNetScaler.ps1 -Username nsroot -Password nsroot -
 
 Clean the NetScaler filesystem: .\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Clean
 
-Upgrade the NetScaler with the firmware: .\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Firmware C:\Temp\Build-14.1-8.50_nc_64.tgz
+Upgrade the NetScaler with the firmware: .\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Firmware C:\Temp\Build-14.1-12.35_nc_64.tgz
 
-Backup, Clean the FileSystem and upgrade the NetScaler with the firmware: .\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Backup -Clean -Firmware C:\Temp\Build-14.1-8.50_nc_64.tgz
+Plan forced failover: .\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Failovertime "1-2-2025 18:00"
+
+Backup, Clean the FileSystem and upgrade the NetScaler with the given firmware and plan the forced failover: .\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Backup -Clean -Firmware C:\Temp\Build-14.1-12.35_nc_64.tgz -Failovertime "1-2-2025 18:00"
 
 The GUI:
 
-![EasyNetScaler.ps1 screenshot](https://github.com/hpmillaard/EasyNetScaler/blob/main/EasyNetScaler.gif?raw=true)
+![EasyNetScaler.ps1 screenshot](https://github.com/hpmillaard/EasyNetScaler/blob/main/EasyNetScaler.png?raw=true)
