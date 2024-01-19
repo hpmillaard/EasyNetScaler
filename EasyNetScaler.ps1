@@ -35,13 +35,13 @@
 	.\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Clean
 	Cleanup the NetScaler filesystem
 .EXAMPLE
-	.\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Firmware C:\Temp\Build-14.1-8.50_nc_64.tgz
+	.\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Firmware C:\Temp\Build-14.1-12.35_nc_64.tgz
 	Upgrade the NetScaler with the firmware
 .EXAMPLE
 	.\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Failovertime "1-2-2025 18:00"
 	Plan forced failover
 .EXAMPLE
-	.\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Backup -Clean -Firmware C:\Temp\Build-14.1-8.50_nc_64.tgz -Failovertime "1-2-2025 18:00"
+	.\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Backup -Clean -Firmware C:\Temp\Build-14.1-12.35_nc_64.tgz -Failovertime "1-2-2025 18:00"
 	Backup, Clean the FileSystem and upgrade the NetScaler with the firmware and plan the force failover
 .NOTES
 	File name	:	EasyNetScaler.ps1
