@@ -45,7 +45,7 @@
 	Backup, Clean the FileSystem and upgrade the NetScaler with the firmware and plan the force failover
 .NOTES
 	File name	:	EasyNetScaler.ps1
-	Version		:	1.1
+	Version		:	1.2
 	Author		:	Harm Peter Millaard
 	Requires	:	PowerShell v5.1 and up
 					ADC 12.1 and higher
@@ -289,9 +289,9 @@ irm "https://$IP/nitro/v1/config/login" -Method POST -Body (ConvertTo-JSON @{"lo
 irm "https://$IP/nitro/v1/config/hafailover?action=force" -Method POST -Body (ConvertTo-Json @{"hafailover"=@{"force"="true"}}) -WebSession `$NSSession -ContentType "application/json"
 irm "https://$IP/nitro/v1/config/logout" -Method POST -Body (ConvertTo-JSON @{"logout"=@{}}) -WebSession `$NSSession -ContentType "application/json"
 schtasks /change /tn NetScaler_Planned_Forced_Failover_$IP /ed $schdate /et $schendtime /Z
-del `$PSScriptRoot\NSForcedFailover.ps1
-"@ | Out-File $ENV:TEMP\NSForcedFailover-$IP.ps1
-			Start cmd "/c schtasks /create /RU SYSTEM /IT /SC ONCE /sd $schdate /st $schtime /tn NetScaler_Planned_Forced_Failover_$IP /F /RL HIGHEST /tr ""powershell.exe -executionpolicy bypass -File $ENV:TEMP\NSForcedFailover-$IP.ps1""" -Verb RunAs
+del `$PSCommandPath
+"@ | Out-File $ENV:WINDIR\TEMP\NSForcedFailover-$IP.ps1
+			Start cmd "/c schtasks /create /RU SYSTEM /IT /SC ONCE /sd $schdate /st $schtime /tn NetScaler_Planned_Forced_Failover_$IP /F /RL HIGHEST /tr ""powershell.exe -executionpolicy bypass -File $ENV:WINDIR\TEMP\NSForcedFailover-$IP.ps1""" -Verb RunAs
 		}
 	}
 }
