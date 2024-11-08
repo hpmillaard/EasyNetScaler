@@ -45,7 +45,7 @@
 	Backup, Clean the FileSystem and upgrade the NetScaler with the firmware and plan the force failover
 .NOTES
 	File name	:	EasyNetScaler.ps1
-	Version		:	1.2
+	Version		:	1.3
 	Author		:	Harm Peter Millaard
 	Requires	:	PowerShell v5.1 and up
 					ADC 12.1 and higher
@@ -68,10 +68,10 @@ param(
 	[datetime]$Failovertime
 )
 
-$ptxt = ".\putty.txt"
-$plog = ".\putty.log"
-$putty = ".\putty.exe"
-$pscp = ".\pscp.exe"
+$ptxt = "$PSScriptRoot\putty.txt"
+$plog = "$PSScriptRoot\putty.log"
+$putty = "$PSScriptRoot\putty.exe"
+$pscp = "$PSScriptRoot\pscp.exe"
 
 del $ptxt, $plog -EA 0
 
@@ -140,9 +140,9 @@ Function Backup-NS{
 		$timestamp = Get-Date -Format yyyy_MM_dd-HH_mm
 		Write-Host Backup will be created with name $timestamp -F green
 		sc $ptxt "create system backup $timestamp -level full -comment $timestamp"
-		Write-Host putty.txt created -F green
+		Write-Host $ptxt created -F green
 
-		$process = start $putty "-ssh $IP -l $U -pw $P -m putty.txt" -PassThru -NoNewWindow
+		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt" -PassThru -NoNewWindow
 		$process.WaitForExit()
 		$process.Close()
 		Write-Host putty run -F green
@@ -151,7 +151,7 @@ Function Backup-NS{
 		Write-Host backup downloaded to (gi .\$($IP)_$($timestamp).tgz) -F green
 
 		sc $ptxt "rm system backup $timestamp.tgz"
-		$process = start $putty "-ssh $IP -l $U -pw $P -m putty.txt" -PassThru -NoNewWindow
+		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt" -PassThru -NoNewWindow
 		$process.WaitForExit()
 		$process.Close()
 		Write-Host backup deleted -F green
@@ -171,7 +171,7 @@ Function Clean-NS{
 	param($U,$P,$IP)
 	If (Check -U $U -P $P -IP $IP){
 		sc $ptxt "shell`ndf -h`nrm -r -f /var/core/*`nrm -r -f /var/crash/*`nrm -r -f /var/nsinstall/*`nrm -r -f /var/nstrace/*`nrm -r -f /var/tmp/*`nfind /var/log/ -mtime +7 -delete`nfind /var/nslog/ -mtime +7 -delete`nfind /var/nsproflog/ -mtime +7 -delete`nfind /var/nsproflog/ -mtime +7 -delete`nfind /var/nssynclog/ -mtime +7 -delete`nfind /var/nssynclog/ -mtime +7 -delete`nfind /var/nstmp/ -mtime +7 -delete`nfind /var/mps/log/ -mtime +7 -delete`ndf -h"
-		$process = start $putty "-ssh $IP -l $U -pw $P -m putty.txt -sessionlog putty.log -logappend" -PassThru -NoNewWindow
+		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logappend" -PassThru -NoNewWindow
 		$process.WaitForExit()
 		$process.Close()
 		
@@ -204,7 +204,7 @@ Function Upgrade-NS{
 		$fwpath = $FW.FullName
 
 		sc $ptxt "shell`ncd /var/nsinstall`nmkdir -p $fwbase`nexit"
-		$process = start $putty "-ssh $IP -l $U -pw $P -m putty.txt -sessionlog putty.log -logoverwrite" -PassThru -NoNewWindow
+		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logoverwrite" -PassThru -NoNewWindow
 		$process.WaitForExit()
 		$process.Close()
 
@@ -220,12 +220,12 @@ Function Upgrade-NS{
 
 		Sleep 1
 		sc $ptxt "shell`ncp /var/install/$fwname /var/nsinstall/$fwbase`nexit"
-		$process = start $putty "-ssh $IP -l $U -pw $P -m putty.txt -sessionlog putty.log -logoverwrite" -PassThru -NoNewWindow
+		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logoverwrite" -PassThru -NoNewWindow
 		$process.WaitForExit()
 		$process.Close()
 		
 		sc $ptxt "shell`necho start`ncd /var/nsinstall/$fwbase`ntar -zxvf $fwname`n./installns -yYGDN`nexit"
-		$process = start $putty "-ssh $IP -l $U -pw $P -m putty.txt -sessionlog putty.log -logappend" -PassThru -NoNewWindow
+		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logappend" -PassThru -NoNewWindow
 		while ($true) {if ((gc $plog) -match "Rebooting"){break}Else{Write-host . -F green -NoNewLine;sleep 1}}
 		Write-host . -F green
 		Stop-Process -Id $process.id -Force
