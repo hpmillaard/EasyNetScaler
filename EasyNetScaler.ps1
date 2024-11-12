@@ -45,7 +45,7 @@
 	Backup, Clean the FileSystem and upgrade the NetScaler with the firmware and plan the force failover
 .NOTES
 	File name	:	EasyNetScaler.ps1
-	Version		:	1.3
+	Version		:	1.4
 	Author		:	Harm Peter Millaard
 	Requires	:	PowerShell v5.1 and up
 					ADC 12.1 and higher
@@ -74,6 +74,10 @@ $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
 
 del $ptxt, $plog -EA 0
+
+[System.Net.ServicePointManager]::CheckCertificateRevocationList={$false}
+[System.Net.ServicePointManager]::ServerCertificateValidationCallback={$true}
+[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
 
 Add-Type -AN System.Windows.Forms
 Add-Type -AN System.Drawing
@@ -241,7 +245,7 @@ Function Upgrade-NS{
 	}
 }
 
-Function Failover{
+Function PlanFailover{
 	param($U,$P,$IP,$FOTime)
 	If (Check -U $U -P $P -IP $IP){
 		If ($FOTime){
@@ -285,7 +289,7 @@ Function Failover{
 [System.Net.ServicePointManager]::CheckCertificateRevocationList={`$false}
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback={`$true}
 [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
-irm "https://$IP/nitro/v1/config/login" -Method POST -Body (ConvertTo-JSON @{"login"=@{"username"="$U";"password"="$P";"timeout"="900"}}) -SessionVariable NSSession -ContentType "application/json"
+irm "https://$IP/nitro/v1/config/login" -Method POST -Body (ConvertTo-JSON @{"login"=@{"username"="$U";"password"="$P";"timeout"="30"}}) -SessionVariable NSSession -ContentType "application/json"
 irm "https://$IP/nitro/v1/config/hafailover?action=force" -Method POST -Body (ConvertTo-Json @{"hafailover"=@{"force"="true"}}) -WebSession `$NSSession -ContentType "application/json"
 irm "https://$IP/nitro/v1/config/logout" -Method POST -Body (ConvertTo-JSON @{"logout"=@{}}) -WebSession `$NSSession -ContentType "application/json"
 schtasks /change /tn NetScaler_Planned_Forced_Failover_$IP /ed $schdate /et $schendtime /Z
@@ -296,17 +300,51 @@ del `$PSCommandPath
 	}
 }
 
+Function HAStatus {
+	param($U,$P,$IP)
+	If (Check -U $U -P $P -IP $IP){
+		irm "https://$IP/nitro/v1/config/login" -Method POST -Body (ConvertTo-JSON @{"login"=@{"username"="$U";"password"="$P";"timeout"="30"}}) -SessionVariable NSSession -ContentType "application/json"
+		$ha = (irm "https://$IP/nitro/v1/config/hanode" -Method GET -WebSession $NSSession -ContentType "application/json").hanode
+		irm "https://$IP/nitro/v1/config/logout" -Method POST -Body (ConvertTo-JSON @{"logout"=@{}}) -WebSession $NSSession -ContentType "application/json"
+		Write-Host $ha.ipaddress[0] = $ha.state[0] = $ha.hastatus[0]
+		Write-Host $ha.ipaddress[1] = $ha.state[1] = $ha.hastatus[1]
+	}
+}
+
+Function Failover {
+	param($U,$P,$IP)
+	If (Check -U $U -P $P -IP $IP){
+		HAStatus -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text
+		Write-Host -f yellow "Starting Failover"
+		irm "https://$IP/nitro/v1/config/login" -Method POST -Body (ConvertTo-JSON @{"login"=@{"username"="$U";"password"="$P";"timeout"="30"}}) -SessionVariable NSSession -ContentType "application/json"
+		irm "https://$IP/nitro/v1/config/hafailover?action=force" -Method POST -Body (ConvertTo-Json @{"hafailover"=@{"force"="true"}}) -WebSession $NSSession -ContentType "application/json"
+		irm "https://$IP/nitro/v1/config/logout" -Method POST -Body (ConvertTo-JSON @{"logout"=@{}}) -WebSession $NSSession -ContentType "application/json"
+		Write-Host -f green "Failover Completed"
+		HAStatus -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text
+	}
+}
+
+function togglepwd{
+	if ($PasswordTB.UseSystemPasswordChar) {
+        $PasswordTB.UseSystemPasswordChar = $false
+        $ShowPwdB.Text = "Hide"
+    } else {
+        $PasswordTB.UseSystemPasswordChar = $true
+        $ShowPwdB.Text = "Show"
+    }
+}
+
 If ($UserName -and $Password -and $IP -and ($Backup -or $Config -or $Clean -or $Firmware -or $Failovertime)){
 	$Cmdline = $true
 	If ($Backup){Backup-NS -U $Username -P $Password -IP $IP}
 	If ($Config){Config-NS -U $Username -P $Password -IP $IP}
 	If ($Clean){Clean-NS -U $Username -P $Password -IP $IP}
 	If ($Firmware){Upgrade-NS -U $Username -P $Password -IP $IP -Fw $Firmware}
-	If ($Failovertime){Failover -U $Username -P $Password -IP $IP -FOTime $Failovertime}
+	If ($Failovertime){PlanFailover -U $Username -P $Password -IP $IP -FOTime $Failovertime}
 }Else{
 	$Form = New-Object System.Windows.Forms.Form
 	$Form.Text = "Easy NetScaler"
-	$Form.Size = New-Object System.Drawing.Size(230, 250)
+	$Form.Size = New-Object System.Drawing.Size(270, 275)
 	$Form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
 
 	New-Label "Easy NetScaler Tool" 10 0 200 25 14 bold
@@ -316,6 +354,10 @@ If ($UserName -and $Password -and $IP -and ($Backup -or $Config -or $Clean -or $
 	New-Label "Password:" 5 55 75 20 10 regular
 	$PasswordTB = New-TextBox 80 55 125 20
 	$PasswordTB.Text = "$Password"
+	$PasswordTB.UseSystemPasswordChar = $true
+	$ShowPwdB = New-Button "Show" 205 55 42 20
+	$ShowPwdB.Add_Click({togglepwd})
+
 	New-Label "IP:" 5 80 75 20 10 regular
 	$IPTB = New-TextBox 80 80 125 20
 	$IPTB.Text = $IP
@@ -324,25 +366,34 @@ If ($UserName -and $Password -and $IP -and ($Backup -or $Config -or $Clean -or $
 	$BackupB.Add_Click({Backup-NS -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text})
 	$Form.Controls.Add($BackupB)
 
-	$ConfigB = New-Button "Config" 65 110 60 30
+	$ConfigB = New-Button "Config" 65 110 65 30
 	$ConfigB.Add_Click({Config-NS -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text})
 	$Form.Controls.Add($ConfigB)
 
-	$CleanB = New-Button "Clean NS FS" 125 110 80 30
+	$CleanB = New-Button "Clean NS FS" 130 110 80 30
 	$CleanB.Add_Click({Clean-NS -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text})
 	$Form.Controls.Add($CleanB)
 
-	$DownloadB = New-Button "Download Firmware" 5 140 120 30
+	$DownloadB = New-Button "Download Firmware" 5 140 125 30
 	$DownloadB.Add_Click({Start "https://www.citrix.com/downloads/citrix-adc/"})
 	$Form.Controls.Add($DownloadB)
 
-	$UpgradeB = New-Button "Upgrade" 125 140 80 30
+	$UpgradeB = New-Button "Upgrade" 130 140 80 30
 	$UpgradeB.Add_Click({Upgrade-NS -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text})
 	$Form.Controls.Add($UpgradeB)
 
-	$PlanFailoverB = New-Button "Plan Forced Failover" 5 170 120 30
-	$PlanFailoverB.Add_Click({Failover -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text})
+	$PlanFailoverB = New-Button "Plan Forced Failover" 5 170 125 30
+	$PlanFailoverB.Add_Click({PlanFailover -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text})
 	$Form.Controls.Add($PlanFailoverB)
+
+	$HAB = New-Button "HA Status" 130 170 80 30
+	$HAB.Add_Click({HAStatus -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text})
+	$Form.Controls.Add($HAB)
+
+	$FailoverB = New-Button "Failover NOW" 5 200 125 30
+	$FailoverB.Add_Click({Failover -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text})
+	$Form.Controls.Add($FailoverB)
+
 	$Form.ShowDialog()
 }
 
