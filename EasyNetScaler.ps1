@@ -300,14 +300,13 @@ del `$PSCommandPath
 	}
 }
 
-Function HAStatus {
+Function Version {
 	param($U,$P,$IP)
 	If (Check -U $U -P $P -IP $IP){
 		irm "https://$IP/nitro/v1/config/login" -Method POST -Body (ConvertTo-JSON @{"login"=@{"username"="$U";"password"="$P";"timeout"="30"}}) -SessionVariable NSSession -ContentType "application/json"
-		$ha = (irm "https://$IP/nitro/v1/config/hanode" -Method GET -WebSession $NSSession -ContentType "application/json").hanode
+		$version = (irm "https://$IP/nitro/v1/config/nsversion" -Method GET -WebSession $NSSession -ContentType "application/json").nsversion
 		irm "https://$IP/nitro/v1/config/logout" -Method POST -Body (ConvertTo-JSON @{"logout"=@{}}) -WebSession $NSSession -ContentType "application/json"
-		Write-Host $ha.ipaddress[0] = $ha.state[0] = $ha.hastatus[0]
-		Write-Host $ha.ipaddress[1] = $ha.state[1] = $ha.hastatus[1]
+		Write-Host $version.version
 	}
 }
 
@@ -324,14 +323,25 @@ Function Failover {
 	}
 }
 
-function togglepwd{
-	if ($PasswordTB.UseSystemPasswordChar) {
-        $PasswordTB.UseSystemPasswordChar = $false
-        $ShowPwdB.Text = "Hide"
-    } else {
-        $PasswordTB.UseSystemPasswordChar = $true
-        $ShowPwdB.Text = "Show"
-    }
+Function HAStatus {
+	param($U,$P,$IP)
+	If (Check -U $U -P $P -IP $IP){
+		irm "https://$IP/nitro/v1/config/login" -Method POST -Body (ConvertTo-JSON @{"login"=@{"username"="$U";"password"="$P";"timeout"="30"}}) -SessionVariable NSSession -ContentType "application/json"
+		$ha = (irm "https://$IP/nitro/v1/config/hanode" -Method GET -WebSession $NSSession -ContentType "application/json").hanode
+		irm "https://$IP/nitro/v1/config/logout" -Method POST -Body (ConvertTo-JSON @{"logout"=@{}}) -WebSession $NSSession -ContentType "application/json"
+		Write-Host $ha.ipaddress[0] = $ha.state[0] = $ha.hastatus[0]
+		Write-Host $ha.ipaddress[1] = $ha.state[1] = $ha.hastatus[1]
+	}
+}
+
+function TogglePWD{
+	If ($PasswordTB.UseSystemPasswordChar) {
+		$PasswordTB.UseSystemPasswordChar = $false
+		$ShowPwdB.Text = "Hide"
+	} Else {
+		$PasswordTB.UseSystemPasswordChar = $true
+		$ShowPwdB.Text = "Show"
+	}
 }
 
 If ($UserName -and $Password -and $IP -and ($Backup -or $Config -or $Clean -or $Firmware -or $Failovertime)){
@@ -351,12 +361,13 @@ If ($UserName -and $Password -and $IP -and ($Backup -or $Config -or $Clean -or $
 	New-Label "Username:" 5 30 75 20 10 regular
 	$UserNameTB = New-TextBox 80 30 125 20
 	If ($Username){$UserNameTB.Text = $UserName}Else{$UserNameTB.Text = "nsroot"}
+
 	New-Label "Password:" 5 55 75 20 10 regular
 	$PasswordTB = New-TextBox 80 55 125 20
 	$PasswordTB.Text = "$Password"
 	$PasswordTB.UseSystemPasswordChar = $true
 	$ShowPwdB = New-Button "Show" 205 55 42 20
-	$ShowPwdB.Add_Click({togglepwd})
+	$ShowPwdB.Add_Click({TogglePWD})
 
 	New-Label "IP:" 5 80 75 20 10 regular
 	$IPTB = New-TextBox 80 80 125 20
@@ -386,13 +397,17 @@ If ($UserName -and $Password -and $IP -and ($Backup -or $Config -or $Clean -or $
 	$PlanFailoverB.Add_Click({PlanFailover -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text})
 	$Form.Controls.Add($PlanFailoverB)
 
-	$HAB = New-Button "HA Status" 130 170 80 30
-	$HAB.Add_Click({HAStatus -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text})
-	$Form.Controls.Add($HAB)
+	$VerB = New-Button "Version" 130 170 80 30
+	$VerB.Add_Click({Version -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text})
+	$Form.Controls.Add($VerB)
 
 	$FailoverB = New-Button "Failover NOW" 5 200 125 30
 	$FailoverB.Add_Click({Failover -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text})
 	$Form.Controls.Add($FailoverB)
+
+	$HAB = New-Button "HA Status" 130 200 80 30
+	$HAB.Add_Click({HAStatus -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text})
+	$Form.Controls.Add($HAB)
 
 	$Form.ShowDialog()
 }
