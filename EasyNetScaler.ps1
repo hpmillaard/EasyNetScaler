@@ -50,7 +50,7 @@
 	Backup, Clean the FileSystem and upgrade the NetScaler with the firmware and plan the force failover
 .NOTES
 	File name	:	EasyNetScaler.ps1
-	Version		:	1.5
+	Version		:	1.6
 	Author		:	Harm Peter Millaard
 	Requires	:	PowerShell v5.1 and up
 				ADC 12.1 and higher
@@ -74,12 +74,8 @@ param(
 	[switch]$FailoverNow
 )
 
-$ptxt = "$PSScriptRoot\putty.txt"
-$plog = "$PSScriptRoot\putty.log"
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
-
-del $ptxt, $plog -EA 0
 
 Add-Type -AN System.Windows.Forms
 Add-Type -AN System.Drawing
@@ -129,14 +125,11 @@ Function Check {
 		if ($tcpClient.Connected) {
 			$tcpClient.Close()
 			return $true
-		}
-		else {
+		} else {
 			Write-Host "Unable to connect to $IP over TCP port $Port" -F Red
 		}
 	}
- catch {
-		Write-Host "Unable to connect to $IP over TCP port $Port" -F Red
-	}
+ 	catch {Write-Host "Unable to connect to $IP over TCP port $Port" -F Red}
 	return $false
 }
 
@@ -184,6 +177,10 @@ Function Clean-NS {
 	param($U, $P, $IP)
 	If (Check -U $U -P $P -IP $IP -Port 22) {
 		DownloadPutty
+		$time = get-date -Format yyMMddHHmm
+		$ptxt = "$PSScriptRoot\putty-$time.txt"
+		$plog = "$PSScriptRoot\putty-$time.log"
+
 		sc $ptxt "shell`ndf -h`nrm -r -f /var/core/*`nrm -r -f /var/crash/*`nrm -r -f /var/nsinstall/*`nrm -r -f /var/nstrace/*`nrm -r -f /var/tmp/*`nfind /var/log/ -mtime +7 -delete`nfind /var/nslog/ -mtime +7 -delete`nfind /var/nsproflog/ -mtime +7 -delete`nfind /var/nsproflog/ -mtime +7 -delete`nfind /var/nssynclog/ -mtime +7 -delete`nfind /var/nssynclog/ -mtime +7 -delete`nfind /var/nstmp/ -mtime +7 -delete`nfind /var/mps/log/ -mtime +7 -delete`ndf -h"
 		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logappend" -PassThru -NoNewWindow
 		$process.WaitForExit()
@@ -198,6 +195,7 @@ Function Clean-NS {
 			Write-Host "used space after cleanup: ${usedSpaceAfter} GB" -F green
 			Write-Host "space freed: ${usedDifference} GB" -F green
 		}
+		del $ptxt, $plog -EA 0
 	}
 }
 
@@ -205,6 +203,9 @@ Function Upgrade-NS {
 	param($U, $P, $IP, $Fw)
 	If (Check -U $U -P $P -IP $IP -Port 22) {
 		DownloadPutty
+		$time = get-date -Format yyMMddHHmm
+		$ptxt = "$PSScriptRoot\putty-$time.txt"
+		$plog = "$PSScriptRoot\putty-$time.log"
 		If (!($Fw)) {
 			$FileBrowser = New-Object System.Windows.Forms.OpenFileDialog
 			$FileBrowser.Title = "Select the firmware file"
@@ -250,11 +251,11 @@ Function Upgrade-NS {
 		If ($Cmdline) {
 			$logpath = (gi "$PSScriptRoot\upgrade-$IP.log").FullName
 			Write-Host "You can view the logfile $logpath for more details about the upgrade" -F green
-		}
-		Else {
+		} Else {
 			$ViewLog = [System.Windows.Forms.MessageBox]::Show("The upgrade completed, do you want to view the logfile?", "View upgrade logfile?", [System.Windows.Forms.MessageBoxButtons]::YesNo)
 			if ($ViewLog -eq [System.Windows.Forms.DialogResult]::Yes) { ii "$PSScriptRoot\upgrade-$IP.log" }
 		}
+		del $ptxt, $plog -EA 0
 	}
 }
 
@@ -423,4 +424,4 @@ Else {
 	$Form.ShowDialog()
 }
 
-del $ptxt, $putty, $pscp -EA 0
+del $putty, $pscp -EA 0
