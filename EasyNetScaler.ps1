@@ -50,7 +50,7 @@
 	Backup, Clean the FileSystem and upgrade the NetScaler with the firmware and plan the force failover
 .NOTES
 	File name	:	EasyNetScaler.ps1
-	Version		:	1.6
+	Version		:	1.7
 	Author		:	Harm Peter Millaard
 	Requires	:	PowerShell v5.1 and up
 				ADC 12.1 and higher
@@ -182,7 +182,7 @@ Function Clean-NS {
 		$plog = "$PSScriptRoot\putty-$time.log"
 
 		sc $ptxt "shell`ndf -h`nrm -r -f /var/core/*`nrm -r -f /var/crash/*`nrm -r -f /var/nsinstall/*`nrm -r -f /var/nstrace/*`nrm -r -f /var/tmp/*`nfind /var/log/ -mtime +7 -delete`nfind /var/nslog/ -mtime +7 -delete`nfind /var/nsproflog/ -mtime +7 -delete`nfind /var/nsproflog/ -mtime +7 -delete`nfind /var/nssynclog/ -mtime +7 -delete`nfind /var/nssynclog/ -mtime +7 -delete`nfind /var/nstmp/ -mtime +7 -delete`nfind /var/mps/log/ -mtime +7 -delete`ndf -h"
-		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logappend" -PassThru -NoNewWindow
+		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logoverwrite" -PassThru -NoNewWindow
 		$process.WaitForExit()
 		$process.Close()
 		
@@ -212,9 +212,8 @@ Function Upgrade-NS {
 			$FileBrowser.Filter = "TGZ Files|build-*_nc_64.tgz"
 			$null = $FileBrowser.ShowDialog()
 			$FW = (gi $FileBrowser.FileName)
-		}
-		Else {
-			If (Test-Path $FW) { $FW = gi $FW }Else { Break }
+		} Else {
+			If (Test-Path $FW) { $FW = gi $FW } Else { Break }
 		}
 		$fwbase = $FW.BaseName
 		$fwname = $FW.Name
@@ -235,19 +234,25 @@ Function Upgrade-NS {
 		start $pscp "-scp -batch -P 22 -l $U -pw $P ""$FWPath"" $IP`:/var/nsinstall/$fwbase/$fwname" -NoNewWindow -Wait
 		Write-Host "Upload Completed. Performing Upgrade" -F green
 
-		Sleep 1
-		sc $ptxt "shell`ncp /var/install/$fwname /var/nsinstall/$fwbase`nexit"
-		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logoverwrite" -PassThru -NoNewWindow
-		$process.WaitForExit()
-		$process.Close()
-		
 		sc $ptxt "shell`necho start`ncd /var/nsinstall/$fwbase`ntar -zxvf $fwname`n./installns -yYGDN`nexit"
-		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logappend" -PassThru -NoNewWindow
-		while ($true) { if ((gc $plog) -match "Rebooting") { break }Else { Write-host . -F green -NoNewLine; sleep 1 } }
-		Write-host . -F green
+		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logoverwrite" -PassThru -NoNewWindow
+		while ($true) {
+			$content = gc $plog
+			if ($content -match "Rebooting") {
+				Write-Host "`nReboot detected." -F Green
+				break
+			} elseif ($content -match "ERROR:") {
+				Write-Host "`nERROR DETECTED!" -F Red
+				break
+			} else {
+				Write-Host "." -F Green -NoNewline
+				Sleep 1
+			}
+		}
+		Write-host ""
 		Stop-Process -Id $process.id -Force
 
-		sc "$PSScriptRoot\upgrade-$IP.log" (gc $plog | Select-Object -skip ((gc $plog | select-string -pattern start).Linenumber[0] - 1))
+		sc "$PSScriptRoot\upgrade-$IP.log" (gc $plog | Select-Object -skip ((gc $plog | select-string -pattern start).Linenumber[0]))
 		If ($Cmdline) {
 			$logpath = (gi "$PSScriptRoot\upgrade-$IP.log").FullName
 			Write-Host "You can view the logfile $logpath for more details about the upgrade" -F green
