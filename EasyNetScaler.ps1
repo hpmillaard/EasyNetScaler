@@ -50,7 +50,7 @@
 	Backup, Clean the FileSystem and upgrade the NetScaler with the firmware and plan the force failover
 .NOTES
 	File name	:	EasyNetScaler.ps1
-	Version		:	1.7
+	Version		:	1.8
 	Author		:	Harm Peter Millaard
 	Requires	:	PowerShell v5.1 and up
 				ADC 12.1 and higher
@@ -240,6 +240,12 @@ Function Upgrade-NS {
 			$content = gc $plog
 			if ($content -match "Rebooting") {
 				Write-Host "`nReboot detected." -F Green
+				Write-Host "Waiting for SSH (port 22) to become available again..." -F Yellow
+				while (!(Check -U $U -P $P -IP $IP -Port 22)) {
+					Write-Host "." -NoNewline -F Yellow
+					Sleep 5
+				}
+				Write-Host "`nSSH is available again on $IP" -F Green
 				break
 			} elseif ($content -match "ERROR:") {
 				Write-Host "`nERROR DETECTED!" -F Red
