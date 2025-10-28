@@ -50,7 +50,6 @@
 	Backup, Clean the FileSystem and upgrade the NetScaler with the firmware and plan the force failover
 .NOTES
 	File name	:	EasyNetScaler.ps1
-	Version		:	1.8
 	Author		:	Harm Peter Millaard
 	Requires	:	PowerShell v5.1 and up
 				ADC 12.1 and higher
@@ -73,6 +72,8 @@ param(
 	[datetime]$Failovertime,
 	[switch]$FailoverNow
 )
+
+$ScriptVersion = '1.9'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -241,6 +242,7 @@ Function Upgrade-NS {
 			if ($content -match "Rebooting") {
 				Write-Host "`nReboot detected." -F Green
 				Write-Host "Waiting for SSH (port 22) to become available again..." -F Yellow
+				Sleep 30
 				while (!(Check -U $U -P $P -IP $IP -Port 22)) {
 					Write-Host "." -NoNewline -F Yellow
 					Sleep 5
@@ -354,6 +356,24 @@ Function HAStatus {
 	Write-Host $ha.ipaddress[1] = $ha.state[1] = $ha.hastatus[1]
 }
 
+Function Update-Script {
+	try {
+		$RemoteScript = irm "https://raw.githubusercontent.com/hpmillaard/EasyNetScaler/main/EasyNetScaler.ps1" -UseBasicParsing
+		$LatestVersion = if ($RemoteScript -match '\$ScriptVersion\s*=\s*[''"]([0-9\.]+)[''"]') { $Matches[1] } else { throw "Version not found" }
+		
+		if ([Version]$LatestVersion -gt [Version]$ScriptVersion) {
+			if ([System.Windows.Forms.MessageBox]::Show("New version ($LatestVersion) available!`n`nUpdate now?", "Update", "YesNo", "Question") -eq "Yes") {
+				$RemoteScript | Out-File "$ENV:TEMP\update.ps1" -Encoding UTF8
+				Move-Item "$ENV:TEMP\update.ps1" $PSCommandPath -Force
+				Write-Host "Updated to version $LatestVersion! Restarting..." -ForegroundColor Green
+				Start-Process PowerShell "-File `"$PSCommandPath`"" $(if($Username){"-Username $Username"}),$(if($Password){"-Password $Password"}),$(if($IP){"-IP $IP"})
+				exit
+			}
+		} else { [System.Windows.Forms.MessageBox]::Show("Already latest version ($ScriptVersion)!", "Up to date", "OK", "Information") }
+	}
+	catch { [System.Windows.Forms.MessageBox]::Show("Update failed: $($_.Exception.Message)", "Error", "OK", "Error") }
+}
+
 function TogglePWD {
 	If ($PasswordTB.UseSystemPasswordChar) {
 		$PasswordTB.UseSystemPasswordChar = $false
@@ -376,11 +396,12 @@ If ($UserName -and $Password -and $IP -and ($Backup -or $Config -or $Clean -or $
 }
 Else {
 	$Form = New-Object System.Windows.Forms.Form
-	$Form.Text = "Easy NetScaler"
-	$Form.Size = New-Object System.Drawing.Size(270, 275)
+	$Form.Text = "Easy NetScaler - v$ScriptVersion"
+	$Form.Size = New-Object System.Drawing.Size(270, 305)
 	$Form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
 
 	New-Label "Easy NetScaler Tool" 10 0 200 25 14 bold
+	New-Label "$ScriptVersion" 220 5 200 20 8 regular
 	New-Label "Username:" 5 30 75 20 10 regular
 	$UserNameTB = New-TextBox 80 30 125 20
 	If ($Username) { $UserNameTB.Text = $UserName }Else { $UserNameTB.Text = "nsroot" }
@@ -431,6 +452,10 @@ Else {
 	$HAB = New-Button "HA Status" 130 200 80 30
 	$HAB.Add_Click({ HAStatus -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text })
 	$Form.Controls.Add($HAB)
+
+	$UpdateB = New-Button "Update" 5 230 125 30
+	$UpdateB.Add_Click({ Update-Script })
+	$Form.Controls.Add($UpdateB)
 
 	$Form.ShowDialog()
 }
