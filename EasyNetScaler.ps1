@@ -402,7 +402,7 @@ Else {
 
 	New-Label "Easy NetScaler Tool" 5 0 190 25 14 bold
 	
-	$VersionB = New-Button "v$ScriptVersion" 210 0 35 20
+	$VersionB = New-Button "v$ScriptVersion" 200 0 50 20 6 regular
 	$VersionB.Add_Click({ Update-Script })
 	$Form.Controls.Add($VersionB)
 
