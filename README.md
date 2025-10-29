@@ -19,6 +19,8 @@ Plan forced failover: .\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 
 
 Backup, Clean the FileSystem and upgrade the NetScaler with the given firmware and plan the forced failover: .\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Backup -Clean -Firmware C:\Temp\Build-14.1-12.35_nc_64.tgz -Failovertime "1-2-2025 18:00"
 
+Since 1.9 I've created an update function and button. If you click on the version, the script checks if there is a newer version and will update itself.
+
 The GUI:
 
 ![EasyNetScaler.ps1 screenshot](https://github.com/hpmillaard/EasyNetScaler/blob/main/EasyNetScaler.png?raw=true)
