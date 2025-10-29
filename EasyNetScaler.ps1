@@ -73,7 +73,7 @@ param(
 	[switch]$FailoverNow
 )
 
-$ScriptVersion = '1.9'
+$ScriptVersion = '1.9.1'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -397,11 +397,15 @@ If ($UserName -and $Password -and $IP -and ($Backup -or $Config -or $Clean -or $
 Else {
 	$Form = New-Object System.Windows.Forms.Form
 	$Form.Text = "Easy NetScaler - v$ScriptVersion"
-	$Form.Size = New-Object System.Drawing.Size(270, 305)
+	$Form.Size = New-Object System.Drawing.Size(270, 270)
 	$Form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
 
-	New-Label "Easy NetScaler Tool" 10 0 200 25 14 bold
-	New-Label "$ScriptVersion" 220 5 200 20 8 regular
+	New-Label "Easy NetScaler Tool" 5 0 190 25 14 bold
+	
+	$VersionB = New-Button "v$ScriptVersion" 210 0 35 20
+	$VersionB.Add_Click({ Update-Script })
+	$Form.Controls.Add($VersionB)
+
 	New-Label "Username:" 5 30 75 20 10 regular
 	$UserNameTB = New-TextBox 80 30 125 20
 	If ($Username) { $UserNameTB.Text = $UserName }Else { $UserNameTB.Text = "nsroot" }
@@ -452,10 +456,6 @@ Else {
 	$HAB = New-Button "HA Status" 130 200 80 30
 	$HAB.Add_Click({ HAStatus -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text })
 	$Form.Controls.Add($HAB)
-
-	$UpdateB = New-Button "Update" 5 230 125 30
-	$UpdateB.Add_Click({ Update-Script })
-	$Form.Controls.Add($UpdateB)
 
 	$Form.ShowDialog()
 }
