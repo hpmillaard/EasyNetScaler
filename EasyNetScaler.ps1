@@ -73,7 +73,7 @@ param(
 	[switch]$FailoverNow
 )
 
-$ScriptVersion = '1.9.2'
+$ScriptVersion = '1.9.3'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -366,7 +366,12 @@ Function Update-Script {
 				$RemoteScript | Out-File "$ENV:TEMP\update.ps1" -Encoding UTF8
 				Move-Item "$ENV:TEMP\update.ps1" $PSCommandPath -Force
 				Write-Host "Updated to version $LatestVersion! Restarting..." -ForegroundColor Green
-				Start-Process PowerShell "-File `"$PSCommandPath`"" $(if($Username){"-Username $Username"}),$(if($Password){"-Password $Password"}),$(if($IP){"-IP $IP"})
+				$restartArgs = "-File `"$PSCommandPath`""
+				if ($Username) { $restartArgs += " -Username $Username" }
+				if ($Password) { $restartArgs += " -Password $Password" }
+				if ($IP) { $restartArgs += " -IP $IP" }
+				Start-Process PowerShell $restartArgs
+				$Form.Close()
 				exit
 			}
 		} else { [System.Windows.Forms.MessageBox]::Show("Already latest version ($ScriptVersion)!", "Up to date", "OK", "Information") }
