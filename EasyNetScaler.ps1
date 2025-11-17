@@ -372,7 +372,6 @@ Function Update-Script {
 				if ($IP) { $restartArgs += " -IP $IP" }
 				Start-Process PowerShell $restartArgs
 				$Form.Close()
-				exit
 			}
 		} else { [System.Windows.Forms.MessageBox]::Show("Already latest version ($ScriptVersion)!", "Up to date", "OK", "Information") }
 	}
