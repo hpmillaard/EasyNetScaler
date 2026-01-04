@@ -17,6 +17,14 @@ Upgrade the NetScaler with the firmware: .\EasyNetScaler.ps1 -Username nsroot -P
 
 Plan forced failover: .\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Failovertime "1-2-2025 18:00"
 
+Immediate failover (make passive node active): .\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -FailoverNow
+
+Schedule an upgrade for a specific time (use with -Firmware and -Upgradetime): .\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Firmware C:\Temp\Build-14.1-12.35_nc_64.tgz -Upgradetime "1-2-2025 18:00"
+
+Generate a vServer CSV report and save it to the script folder: .\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -vServerReport
+
+Compare two vServer reports (local files): .\EasyNetScaler.ps1 -CompareReports C:\reports\before.csv,C:\reports\after.csv
+
 Backup, Clean the FileSystem and upgrade the NetScaler with the given firmware and plan the forced failover: .\EasyNetScaler.ps1 -Username nsroot -Password nsroot -IP 192.168.1.1 -Backup -Clean -Firmware C:\Temp\Build-14.1-12.35_nc_64.tgz -Failovertime "1-2-2025 18:00"
 
 Since 1.9 I've created an update function and button. If you click on the version, the script checks if there is a newer version and will update itself.
