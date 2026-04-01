@@ -95,7 +95,7 @@ param(
 	[string[]]$CompareReports
 )
 
-$ScriptVersion = '2.0.0'
+$ScriptVersion = '2.0.1'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -104,7 +104,7 @@ Add-Type -AN System.Windows.Forms
 Add-Type -AN System.Drawing
 Function msgbox($Text) { $r = [System.Windows.Forms.MessageBox]::Show($Text, $Text, [System.Windows.Forms.MessageBoxButtons]::OK) }
 
-Function New-Label ($TargetForm, $Label, $X=5, $Y=5, $Width=50, $Height=20, $FontSize=10, $FontStyle='regular') {
+Function New-Label ($TargetForm, $Label, $X = 5, $Y = 5, $Width = 50, $Height = 20, $FontSize = 10, $FontStyle = 'regular') {
 	$LabelControl = New-Object System.Windows.Forms.Label
 	$LabelControl.Location = New-Object System.Drawing.Point $X, $Y
 	$LabelControl.Size = New-Object System.Drawing.Size $Width, $Height
@@ -113,7 +113,7 @@ Function New-Label ($TargetForm, $Label, $X=5, $Y=5, $Width=50, $Height=20, $Fon
 	$null = $TargetForm.Controls.Add($LabelControl)
 	$LabelControl
 }
-Function New-TextBox ($TargetForm, $X=55, $Y=5, $Width=305, $Height=20) {
+Function New-TextBox ($TargetForm, $X = 55, $Y = 5, $Width = 305, $Height = 20) {
 	$TB = New-Object System.Windows.Forms.TextBox
 	$TB.Location = New-Object System.Drawing.Point $X, $Y
 	$TB.Size = New-Object System.Drawing.Size $Width, $Height
@@ -172,12 +172,13 @@ Function Check {
 			$process.Close()
 			del $ptxt -EA 0
 			return $true
-		} else {Write-Host "Unable to connect to $IP over TCP port $Port" -F Red }
+		}
+		else { Write-Host "Unable to connect to $IP over TCP port $Port" -F Red }
 	}
-	   catch {
-		   Write-Host "Try failed: Unable to connect to $IP over TCP port $Port" -F Red
-		   Write-Host $_.Exception.Message -F Red
-	   }
+	catch {
+		Write-Host "Try failed: Unable to connect to $IP over TCP port $Port" -F Red
+		Write-Host $_.Exception.Message -F Red
+	}
 	return $false
 }
 
@@ -192,7 +193,8 @@ Function Login {
 		try {
 			$req = $sender -as [System.Net.HttpWebRequest]
 			if ($req -and $req.RequestUri.Host -eq $IP) { return $true }
-		} catch {}
+		}
+		catch {}
 		if ($script:OriginalCertificateCallback) { return & $script:OriginalCertificateCallback $sender, $cert, $chain, $sslPolicyErrors }
 		return ($sslPolicyErrors -eq [System.Net.Security.SslPolicyErrors]::None)
 	}
@@ -242,7 +244,7 @@ Function Clean-NS {
 		$ptxt = "$PSScriptRoot\putty-$time.txt"
 		$plog = "$PSScriptRoot\putty-$time.log"
 
-		sc $ptxt "shell`ndf -h`nrm -r -f /var/core/*`nrm -r -f /var/crash/*`nrm -r -f /var/nsinstall/*`nrm -r -f /var/nstrace/*`nrm -r -f /var/tmp/*`nfind /var/log/ -mtime +7 -delete`nfind /var/nslog/ -mtime +7 -delete`nfind /var/nsproflog/ -mtime +7 -delete`nfind /var/nsproflog/ -mtime +7 -delete`nfind /var/nssynclog/ -mtime +7 -delete`nfind /var/nssynclog/ -mtime +7 -delete`nfind /var/nstmp/ -mtime +7 -delete`nfind /var/mps/log/ -mtime +7 -delete`ndf -h"
+		sc $ptxt "shell`ndf -h`nrm -r -f /var/core/*`nrm -r -f /var/crash/*`nrm -r -f /var/nsinstall/*`nrm -r -f /var/nstrace/*`nrm -r -f /var/tmp/*`nfind /var/log/ -mtime +7 -delete`nfind /var/nslog/ -mtime +7 -delete`nfind /var/nsproflog/ -mtime +7 -delete`nfind /var/nsproflog/ -mtime +7 -delete`nfind /var/nssynclog/ -mtime +7 -delete`nfind /var/nssynclog/ -mtime +7 -delete`nfind /var/ns_system_backup/ -mtime +7 -delete`nfind /var/nstmp/ -mtime +7 -delete`nfind /var/mastools/logs/ -mtime +7 -delete`nfind /var/mps/log/ -mtime +7 -delete`ndf -h"
 		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logoverwrite" -PassThru -NoNewWindow
 		$process.WaitForExit()
 		$process.Close()
@@ -272,7 +274,8 @@ Function Upgrade-NS {
 			$FileBrowser.Filter = "TGZ Files|build-*_nc_64.tgz"
 			$null = $FileBrowser.ShowDialog()
 			$FW = (gi $FileBrowser.FileName)
-		} else {
+		}
+		else {
 			if (Test-Path $FW) { $FW = gi $FW } else { Break }
 		}
 		$fwbase = $FW.BaseName
@@ -308,10 +311,12 @@ Function Upgrade-NS {
 				}
 				Write-Host "`nSSH is available again on $IP" -F Green
 				break
-			} elseif ($content -match "ERROR:") {
+			}
+			elseif ($content -match "ERROR:") {
 				Write-Host "`nERROR DETECTED!" -F Red
 				break
-			} else {
+			}
+			else {
 				Write-Host "." -F Green -NoNewline
 				Sleep 1
 			}
@@ -323,7 +328,8 @@ Function Upgrade-NS {
 		If ($Cmdline) {
 			$logpath = (gi "$PSScriptRoot\upgrade-$IP.log").FullName
 			Write-Host "You can view the logfile $logpath for more details about the upgrade" -F green
-		} Else {
+		}
+		Else {
 			$ViewLog = [System.Windows.Forms.MessageBox]::Show("The upgrade completed, do you want to view the logfile?", "View upgrade logfile?", [System.Windows.Forms.MessageBoxButtons]::YesNo)
 			if ($ViewLog -eq [System.Windows.Forms.DialogResult]::Yes) { ii "$PSScriptRoot\upgrade-$IP.log" }
 		}
@@ -335,7 +341,8 @@ Function PlanUpgrade {
 	param($U, $P, $IP, $Fw, $UPTime)
 	if ($UPTime) {
 		$selectedDateTime = Get-Date $UPTime
-	} else {
+	}
+ else {
 		$PlanForm = New-Object System.Windows.Forms.Form
 		$PlanForm.Text = "Plan Upgrade"
 		$PlanForm.Size = New-Object System.Drawing.Size(350, 150)
@@ -399,7 +406,8 @@ Function PlanFailover($U, $P, $IP, $FOTime) {
 	if (Check -U $U -P $P -IP $IP -Port 443) {
 		if ($FOTime) {
 			$selectedDateTime = Get-Date $FOTime
-		} else {
+		}
+		else {
 			$PlanForm = New-Object System.Windows.Forms.Form
 			$PlanForm.Text = "Plan Forced Failover"
 			$PlanForm.Size = New-Object System.Drawing.Size(350, 150)
@@ -489,7 +497,8 @@ Function Get-vServerStatus {
 					ServiceType    = $vs.servicetype
 				}
 			}
-		} catch { Write-Host "Could not retrieve $($t.type) vServers" -F Yellow }
+		}
+		catch { Write-Host "Could not retrieve $($t.type) vServers" -F Yellow }
 	}
 	Logout
 	return @{
@@ -533,7 +542,7 @@ Function Export-vServerReport {
 
 Function Compare-vServerReport {
 	param($Report1Path, $Report2Path)
-	if (!(Test-Path $Report1Path) -or !(Test-Path $Report2Path)) { Write-Host "One or both report files not found!" -F Red; return}
+	if (!(Test-Path $Report1Path) -or !(Test-Path $Report2Path)) { Write-Host "One or both report files not found!" -F Red; return }
 	$r1 = Import-Csv $Report1Path
 	$r2 = Import-Csv $Report2Path
 	Write-Host "`n========== vServer Comparison Report =========" -F Cyan
@@ -550,7 +559,8 @@ Function Compare-vServerReport {
 				$chg = if ($a.State -eq 'UP' -and $b.State -ne 'UP') { 'DEGRADED' } elseif ($a.State -ne 'UP' -and $b.State -eq 'UP') { 'IMPROVED' } else { 'CHANGED' }
 				$diffs += "[$($a.Type)] $($a.Name): $($a.State) -> $($b.State) ($chg)"
 			}
-		} else { $diffs += "[$($a.Type)] $($a.Name) missing in report 2 (was $($a.State))" }
+		}
+		else { $diffs += "[$($a.Type)] $($a.Name) missing in report 2 (was $($a.State))" }
 	}
 	foreach ($b in $r2 | Where-Object { ($r1 | Where-Object { $_.Name -eq $b.Name -and $_.Type -eq $b.Type }).Count -eq 0 }) {
 		$diffs += "[$($b.Type)] $($b.Name) new in report 2 ($($b.State))"
@@ -569,47 +579,49 @@ Function Compare-vServerReport {
 		"`nDifferences:" | Out-File $comparisonPath -Append -Encoding UTF8
 		$diffs | Out-File $comparisonPath -Append -Encoding UTF8
 		Write-Host "`nComparison saved to: $comparisonPath" -F Green
-	} else {
+	}
+ else {
 		Write-Host "`nNo differences found! All vServers have the same state. No comparison file created." -F Green
 	}
 }
 
 Function Show-CompareDialog {
-		$CompareForm = New-Object System.Windows.Forms.Form
-		$CompareForm.Text = "Compare vServer Reports"
-		$CompareForm.Size = New-Object System.Drawing.Size(450, 150)
-		$CompareForm.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+	$CompareForm = New-Object System.Windows.Forms.Form
+	$CompareForm.Text = "Compare vServer Reports"
+	$CompareForm.Size = New-Object System.Drawing.Size(450, 150)
+	$CompareForm.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
 
-		$labels = @("Before:", "After:")
-		$TBs = @()
-		for ($i = 0; $i -lt 2; $i++) {
-			$y = 10 + 30*$i
-			New-Label $CompareForm $labels[$i] 5 $y
-			$TBs += New-TextBox $CompareForm 55 $y
-			$Browse = New-Button $CompareForm "Browse" 365 (8 + 30*$i) 65 25
-			$Browse.Add_Click({
+	$labels = @("Before:", "After:")
+	$TBs = @()
+	for ($i = 0; $i -lt 2; $i++) {
+		$y = 10 + 30 * $i
+		New-Label $CompareForm $labels[$i] 5 $y
+		$TBs += New-TextBox $CompareForm 55 $y
+		$Browse = New-Button $CompareForm "Browse" 365 (8 + 30 * $i) 65 25
+		$Browse.Add_Click({
 				$fb = New-Object System.Windows.Forms.OpenFileDialog
 				$fb.Title = "Select Report $($labels[$i].Trim(':'))"
 				$fb.Filter = "CSV Files|*.csv"
 				$fb.InitialDirectory = $PSScriptRoot
 				if ($fb.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $TBs[$i].Text = $fb.FileName }
 			}.GetNewClosure())
-		}
+	}
 
-		$CompareB = New-Button $CompareForm "Compare" 5 75 100 30
-		$CompareB.Add_Click({
+	$CompareB = New-Button $CompareForm "Compare" 5 75 100 30
+	$CompareB.Add_Click({
 			if ($TBs[0].Text -and $TBs[1].Text) {
 				Compare-vServerReport -Report1Path $TBs[0].Text -Report2Path $TBs[1].Text
 				$CompareForm.Close()
-			} else {
+			}
+			else {
 				[System.Windows.Forms.MessageBox]::Show("Please select both report files", "Error", "OK", "Error")
 			}
 		})
 
-		$CancelB = New-Button $CompareForm "Cancel" 110 75 100 30
-		$CancelB.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+	$CancelB = New-Button $CompareForm "Cancel" 110 75 100 30
+	$CancelB.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
 
-		$null = $CompareForm.ShowDialog()
+	$null = $CompareForm.ShowDialog()
 }
 
 Function Update-Script {
@@ -630,7 +642,8 @@ Function Update-Script {
 				$Form.Close()
 				exit
 			}
-		} else { [System.Windows.Forms.MessageBox]::Show("Already latest version ($ScriptVersion)!", "Up to date", "OK", "Information") }
+		}
+		else { [System.Windows.Forms.MessageBox]::Show("Already latest version ($ScriptVersion)!", "Up to date", "OK", "Information") }
 	}
 	catch { [System.Windows.Forms.MessageBox]::Show("Update failed: $($_.Exception.Message)", "Error", "OK", "Error") }
 }
@@ -639,7 +652,8 @@ function TogglePWD {
 	if ($PasswordTB.UseSystemPasswordChar) {
 		$PasswordTB.UseSystemPasswordChar = $false
 		$ShowPwdB.Text = "Hide"
-	} else {
+	}
+ else {
 		$PasswordTB.UseSystemPasswordChar = $true
 		$ShowPwdB.Text = "Show"
 	}
@@ -648,7 +662,8 @@ function TogglePWD {
 if ($CompareReports -and $CompareReports.Count -eq 2) {
 	$Cmdline = $true
 	Compare-vServerReport -Report1Path $CompareReports[0] -Report2Path $CompareReports[1]
-} elseif ($UserName -and $Password -and $IP -and ($Backup -or $Config -or $Clean -or $Firmware -or $Failovertime -or $Upgradetime -or $vServerReport)) {
+}
+elseif ($UserName -and $Password -and $IP -and ($Backup -or $Config -or $Clean -or $Firmware -or $Failovertime -or $Upgradetime -or $vServerReport)) {
 	$Cmdline = $true
 	if ($Backup) { Backup-NS -U $Username -P $Password -IP $IP }
 	if ($Config) { Config-NS -U $Username -P $Password -IP $IP }
@@ -658,7 +673,8 @@ if ($CompareReports -and $CompareReports.Count -eq 2) {
 	if ($Failovertime) { PlanFailover -U $Username -P $Password -IP $IP -FOTime $Failovertime }
 	if ($Upgradetime -and $Firmware) { PlanUpgrade -U $Username -P $Password -IP $IP -UPTime $Upgradetime }
 	if ($FailoverNow) { Failover -U $Username -P $Password -IP $IP }
-} else {
+}
+else {
 	$Form = New-Object System.Windows.Forms.Form
 	$Form.Text = "Easy NetScaler - v$ScriptVersion"
 	$Form.Size = New-Object System.Drawing.Size(335, 300)
