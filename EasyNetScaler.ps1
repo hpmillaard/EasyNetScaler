@@ -95,7 +95,7 @@ param(
 	[string[]]$CompareReports
 )
 
-$ScriptVersion = '2.0.1'
+$ScriptVersion = '2.0.2'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
