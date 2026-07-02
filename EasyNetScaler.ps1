@@ -297,7 +297,7 @@ Function Upgrade-NS {
 		start $pscp "-scp -batch -P 22 -l $U -pw $P ""$FWPath"" $IP`:/var/nsinstall/$fwbase/$fwname" -NoNewWindow -Wait
 		Write-Host "Upload Completed. Performing Upgrade" -F green
 
-		sc $ptxt "shell`necho start`ncd /var/nsinstall/$fwbase`ntar -zxvf $fwname`nrm $fwname`n./installns -g -G -N -y -M -D`nexit"
+		sc $ptxt "shell`necho start`ncd /var/nsinstall/$fwbase`ntar -zxvf $fwname`nrm $fwname`n./installns -g -G -N -y -Y -M -D --ignorecertcheckerrors`nexit"
 		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logoverwrite" -PassThru -NoNewWindow
 		while ($true) {
 			$content = gc $plog
