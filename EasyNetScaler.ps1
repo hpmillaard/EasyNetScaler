@@ -143,27 +143,37 @@ Function New-DateTimePicker ($TargetForm, $X, $Y, $Width, $Height) {
 }
 
 Function Style-Form($Window) {
-	$Window.BackColor = [System.Drawing.Color]::FromArgb(24, 31, 43)
+	$Window.BackColor = [System.Drawing.Color]::FromArgb(24,31,43)
 	$Window.ForeColor = [System.Drawing.Color]::WhiteSmoke
-	$Window.Font = New-Object System.Drawing.Font('Segoe UI', 10)
+	$Window.Font = New-Object System.Drawing.Font('Segoe UI',10)
 	$Window.FormBorderStyle = 'FixedDialog'
 	$Window.MaximizeBox = $false
 	$Window.AutoScaleMode = 'None'
-	$Window.ClientSize = New-Object System.Drawing.Size([int]($Window.ClientSize.Width * 1.45), [int]($Window.ClientSize.Height * 1.35))
+	$Window.ClientSize = New-Object System.Drawing.Size([int]($Window.ClientSize.Width * 1.45),[int]($Window.ClientSize.Height * 1.35))
 	foreach ($Control in $Window.Controls) {
-		$Control.SetBounds([int]($Control.Left * 1.4 + 10), [int]($Control.Top * 1.3 + 10), [int]($Control.Width * 1.25), [int]($Control.Height * 1.2))
-		$Control.Font = New-Object System.Drawing.Font('Segoe UI', $(if ($Control.Font.Bold) { 12 } else { 10 }), $(if ($Control.Font.Bold) { 'Bold' } else { 'Regular' }))
+		$Control.SetBounds([int]($Control.Left * 1.4 + 10),[int]($Control.Top * 1.3 + 10),[int]($Control.Width * 1.25),[int]($Control.Height * 1.2))
+		$Control.Font = New-Object System.Drawing.Font('Segoe UI',$(if ($Control.Font.Bold) { 12 } else { 10 }),$(if ($Control.Font.Bold) { 'Bold' } else { 'Regular' }))
 		if ($Control -is [System.Windows.Forms.Label]) {
-			$Control.ForeColor = [System.Drawing.Color]::FromArgb(219, 229, 240)
+			$Control.ForeColor = [System.Drawing.Color]::FromArgb(219,229,240)
 			$Control.BackColor = [System.Drawing.Color]::Transparent
 		}
 		elseif ($Control -is [System.Windows.Forms.Button]) {
 			$Control.FlatStyle = 'Flat'
 			$Control.FlatAppearance.BorderSize = 0
-			$Control.BackColor = [System.Drawing.Color]::FromArgb(52, 69, 91)
+			$Control.BackColor = [System.Drawing.Color]::FromArgb(52,69,91)
 			$Control.ForeColor = [System.Drawing.Color]::White
 			$Control.Cursor = [System.Windows.Forms.Cursors]::Hand
-			if ($Control.Text -match '^(Upgrade|Failover NOW|Compare|OK)
+			if ($Control.Text -match '^(Upgrade|Failover NOW|Compare|OK)$') { $Control.BackColor = [System.Drawing.Color]::FromArgb(29,111,192) }
+		}
+		elseif ($Control -is [System.Windows.Forms.TextBox]) {
+			$Control.BackColor = [System.Drawing.Color]::FromArgb(238,244,250)
+			$Control.ForeColor = [System.Drawing.Color]::FromArgb(24,31,43)
+			$Control.BorderStyle = 'FixedSingle'
+		}
+	}
+}
+
+Function Check {
 	param($U, $P, $IP, $Port, [switch]$Quiet)
 	If (!(Test-Path $putty)) { Start-BitsTransfer 'https://the.earth.li/~sgtatham/putty/latest/w32/putty.exe' $putty }
 	If (!(Test-Path $pscp)) { Start-BitsTransfer 'https://the.earth.li/~sgtatham/putty/latest/w32/pscp.exe' $pscp }
