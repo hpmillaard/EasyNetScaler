@@ -95,7 +95,7 @@ param(
 	[string[]]$CompareReports
 )
 
-$ScriptVersion = '2.1.0'
+$ScriptVersion = '2.1.1'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -152,7 +152,7 @@ Function Style-Form($Window) {
 	$Window.ClientSize = New-Object System.Drawing.Size([int]($Window.ClientSize.Width * 1.45),[int]($Window.ClientSize.Height * 1.35))
 	foreach ($Control in $Window.Controls) {
 		$Control.SetBounds([int]($Control.Left * 1.4 + 10),[int]($Control.Top * 1.3 + 10),[int]($Control.Width * 1.25),[int]($Control.Height * 1.2))
-		$Control.Font = New-Object System.Drawing.Font('Segoe UI',$(if ($Control.Font.Bold) { 12 } else { 10 }),$(if ($Control.Font.Bold) { 'Bold' } else { 'Regular' }))
+		$Control.Font = [System.Drawing.Font]::new('Segoe UI', [single]$(if ($Control.Font.Bold) { 12 } else { 10 }), $(if ($Control.Font.Bold) { [System.Drawing.FontStyle]::Bold } else { [System.Drawing.FontStyle]::Regular }))
 		if ($Control -is [System.Windows.Forms.Label]) {
 			$Control.ForeColor = [System.Drawing.Color]::FromArgb(219,229,240)
 			$Control.BackColor = [System.Drawing.Color]::Transparent
