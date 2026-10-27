@@ -95,7 +95,7 @@ param(
 	[string[]]$CompareReports
 )
 
-$ScriptVersion = '2.0.4'
+$ScriptVersion = '2.0.5'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -642,7 +642,7 @@ Function Update-Script {
 				if ($IP) { $restartArgs += " -IP $IP" }
 				Start-Process PowerShell $restartArgs
 				$Form.Close()
-				exit
+				return
 			}
 		}
 		else { [System.Windows.Forms.MessageBox]::Show("Already latest version ($ScriptVersion)!", "Up to date", "OK", "Information") }
