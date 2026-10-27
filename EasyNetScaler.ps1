@@ -95,7 +95,7 @@ param(
 	[string[]]$CompareReports
 )
 
-$ScriptVersion = '2.0.2'
+$ScriptVersion = '2.0.3'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -390,14 +390,33 @@ Function Version {
 	Write-Host -f cyan $IP = $version
 }
 
+Function KillSecondaryAAA {
+	param($U, $P, $IP, $OldPrimary)
+	for ($i = 0; $i -lt 12; $i++) {
+		$ha = (irm "https://$IP/nitro/v1/config/hanode" -Method GET @params).hanode
+		$secondary = $ha | ? { $_.ipaddress -eq $OldPrimary -and $_.state -eq 'Secondary' } | select -First 1
+		if ($secondary) {
+			if (!(Login -U $U -P $P -IP $OldPrimary)) { return }
+			$R = irm "https://$OldPrimary/nitro/v1/config/aaasession?action=kill" -Method POST -Body (ConvertTo-Json @{aaasession = @{all = $true}}) @params
+			if ($R.errorcode -ne 0) { Write-Host "AAA session cleanup failed: $($R.message)" -F Red; return }
+			Write-Host "AAA sessions cleared on secondary node $OldPrimary" -F Green
+			return
+		}
+		sleep 5
+	}
+	Write-Host "Failover not confirmed; AAA sessions not cleared" -F Red
+}
+
 Function Failover {
 	param($U, $P, $IP)
 	If (!(Check -U $U -P $P -IP $IP -Port 443)) { return }
 	HAStatus  -U $U -P $P -IP $IP
 	Write-Host -f yellow "Starting Failover $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')"
 	If (!(Login -U $U -P $P -IP $IP)) { return }
+	$OldPrimary = ((irm "https://$IP/nitro/v1/config/hanode" -Method GET @params).hanode | ? state -eq "Primary" | select -First 1).ipaddress
 	$R = irm "https://$IP/nitro/v1/config/hafailover?action=force" -Method POST -Body (ConvertTo-Json @{"hafailover" = @{"force" = "true" } }) @params
 	$R
+	if ($R.errorcode -eq 0 -and $OldPrimary) { KillSecondaryAAA -U $U -P $P -IP $IP -OldPrimary $OldPrimary }
 	Write-Host -f green "Failover Completed $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')"
 	HAStatus -U $U -P $P -IP $IP
 }
@@ -429,28 +448,9 @@ Function PlanFailover($U, $P, $IP, $FOTime) {
 			$schtime = $selectedDateTime.ToString("HH:mm")
 			$schdate = $selectedDateTime.ToString("dd/MM/yyyy", [System.Globalization.CultureInfo]::InvariantCulture)
 			$schendtime = $selectedDateTime.Addminutes(1).ToString("HH:mm")
+			$scriptPath = (Get-Item $PSCommandPath).FullName
 			@"
-[System.Net.ServicePointManager]::CheckCertificateRevocationList=`$false
-`$script:OriginalCertificateCallback = [System.Net.ServicePointManager]::ServerCertificateValidationCallback
-[System.Net.ServicePointManager]::ServerCertificateValidationCallback = {
-	param(`$sender, `$cert, `$chain, `$sslPolicyErrors)
-	try {
-		`$req = `$sender -as [System.Net.HttpWebRequest]
-		if (`$req -and `$req.RequestUri.Host -eq '$IP') { return `$true }
-	} catch {}
-	if (`$script:OriginalCertificateCallback) { return & `$script:OriginalCertificateCallback `$sender, `$cert, `$chain, `$sslPolicyErrors }
-	return (`$sslPolicyErrors -eq [System.Net.Security.SslPolicyErrors]::None)
-}
-[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
-irm "https://$IP/nitro/v1/config/login" -Method POST -Body (ConvertTo-JSON @{"login"=@{"username"="$U";"password"="$P";"timeout"="30"}}) -SessionVariable NSSession -ContentType "application/json"
-irm "https://$IP/nitro/v1/config/hafailover?action=force" -Method POST -Body (ConvertTo-Json @{"hafailover"=@{"force"="true"}}) -WebSession `$NSSession -ContentType "application/json"
-irm "https://$IP/nitro/v1/config/logout" -Method POST -Body (ConvertTo-JSON @{"logout"=@{}}) -WebSession `$NSSession -ContentType "application/json"
-# Restore original certificate validation settings
-if (`$script:OriginalCertificateCallback -ne `$null) {
-	[System.Net.ServicePointManager]::ServerCertificateValidationCallback = `$script:OriginalCertificateCallback
-	Remove-Variable -Scope Script -Name OriginalCertificateCallback -ErrorAction SilentlyContinue
-}
-[System.Net.ServicePointManager]::CheckCertificateRevocationList = `$true
+& '$scriptPath' -Username '$U' -Password '$P' -IP '$IP' -FailoverNow
 schtasks /change /tn NetScaler_Planned_Forced_Failover_$IP /ed $schdate /et $schendtime /Z
 del `$PSCommandPath
 "@ | Out-File $ENV:WINDIR\TEMP\NSForcedFailover-$IP.ps1
@@ -663,7 +663,7 @@ if ($CompareReports -and $CompareReports.Count -eq 2) {
 	$Cmdline = $true
 	Compare-vServerReport -Report1Path $CompareReports[0] -Report2Path $CompareReports[1]
 }
-elseif ($UserName -and $Password -and $IP -and ($Backup -or $Config -or $Clean -or $Firmware -or $Failovertime -or $Upgradetime -or $vServerReport)) {
+elseif ($UserName -and $Password -and $IP -and ($Backup -or $Config -or $Clean -or $Firmware -or $Failovertime -or $Upgradetime -or $vServerReport -or $FailoverNow)) {
 	$Cmdline = $true
 	if ($Backup) { Backup-NS -U $Username -P $Password -IP $IP }
 	if ($Config) { Config-NS -U $Username -P $Password -IP $IP }
