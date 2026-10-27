@@ -95,7 +95,7 @@ param(
 	[string[]]$CompareReports
 )
 
-$ScriptVersion = '2.0.3'
+$ScriptVersion = '2.0.4'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -143,7 +143,7 @@ Function New-DateTimePicker ($TargetForm, $X, $Y, $Width, $Height) {
 }
 
 Function Check {
-	param($U, $P, $IP, $Port)
+	param($U, $P, $IP, $Port, [switch]$Quiet)
 	If (!(Test-Path $putty)) { Start-BitsTransfer 'https://the.earth.li/~sgtatham/putty/latest/w32/putty.exe' $putty }
 	If (!(Test-Path $pscp)) { Start-BitsTransfer 'https://the.earth.li/~sgtatham/putty/latest/w32/pscp.exe' $pscp }
 	If ([string]::IsNullOrEmpty($U)) { msgbox "Username can't be empty"; return $false }
@@ -173,11 +173,13 @@ Function Check {
 			del $ptxt -EA 0
 			return $true
 		}
-		else { Write-Host "Unable to connect to $IP over TCP port $Port" -F Red }
+		else { if (!$Quiet) { Write-Host "Unable to connect to $IP over TCP port $Port" -F Red } }
 	}
 	catch {
-		Write-Host "Try failed: Unable to connect to $IP over TCP port $Port" -F Red
-		Write-Host $_.Exception.Message -F Red
+		if (!$Quiet) {
+			Write-Host "Try failed: Unable to connect to $IP over TCP port $Port" -F Red
+			Write-Host $_.Exception.Message -F Red
+		}
 	}
 	return $false
 }
@@ -305,7 +307,7 @@ Function Upgrade-NS {
 				Write-Host "`nReboot detected." -F Green
 				Write-Host "Waiting for SSH (port 22) to become available again..." -F Yellow
 				Sleep 30
-				while (!(Check -U $U -P $P -IP $IP -Port 22)) {
+				while (!(Check -U $U -P $P -IP $IP -Port 22 -Quiet)) {
 					Write-Host "." -NoNewline -F Yellow
 					Sleep 5
 				}
@@ -454,7 +456,7 @@ Function PlanFailover($U, $P, $IP, $FOTime) {
 schtasks /change /tn NetScaler_Planned_Forced_Failover_$IP /ed $schdate /et $schendtime /Z
 del `$PSCommandPath
 "@ | Out-File $ENV:WINDIR\TEMP\NSForcedFailover-$IP.ps1
-			Start-Process cmd "/c schtasks /create /IT /SC ONCE /sd $schdate /st $schtime /tn NetScaler_Planned_Forced_Failover_$IP /F /RL HIGHEST /tr `"powershell.exe -executionpolicy bypass -File $ENV:WINDIR\TEMP\NSForcedFailover-$IP.ps1`"" -Verb RunAs
+			schtasks /create /SC ONCE /sd $schdate /st $schtime /tn NetScaler_Planned_Forced_Failover_$IP /F /RU "$env:USERDOMAIN\$env:USERNAME" /NP /RL LIMITED /tr "powershell.exe -executionpolicy bypass -File $ENV:WINDIR\TEMP\NSForcedFailover-$IP.ps1"
 			Write-Host "Planned failover scheduled for $selectedDateTime" -F Green
 		}
 	}
