@@ -95,7 +95,7 @@ param(
 	[string[]]$CompareReports
 )
 
-$ScriptVersion = '2.1.1'
+$ScriptVersion = '2.1.2'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -327,7 +327,12 @@ Function Upgrade-NS {
 			If ($Reboot -eq [System.Windows.Forms.DialogResult]::No) { return }
 		}
 		Write-Host "Uploading Firmware $($fw.name)" -F green
-		start $pscp "-scp -batch -P 22 -l $U -pw $P ""$FWPath"" $IP`:/var/nsinstall/$fwbase/$fwname" -NoNewWindow -Wait
+		$process = start $pscp "-scp -batch -P 22 -l $U -pw $P ""$FWPath"" $IP`:/var/nsinstall/$fwbase/$fwname" -NoNewWindow -Wait -PassThru
+		if ($process.ExitCode -ne 0) {
+			Write-Host "Firmware upload failed (PSCP exitcode $($process.ExitCode)). Upgrade cancelled." -F Red
+			del $ptxt, $plog -EA 0
+			return
+		}
 		Write-Host "Upload Completed. Performing Upgrade" -F green
 
 		sc $ptxt "shell`necho start`ncd /var/nsinstall/$fwbase`ntar -zxvf $fwname`nrm $fwname`n./installns -g -G -N -y -Y -D --ignorecertcheckerrors`nexit"
