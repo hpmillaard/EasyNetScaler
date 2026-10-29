@@ -92,10 +92,11 @@ param(
 	[datetime]$Upgradetime,
 	[switch]$FailoverNow,
 	[switch]$vServerReport,
-	[string[]]$CompareReports
+	[string[]]$CompareReports,
+	[switch]$GuiChild
 )
 
-$ScriptVersion = '2.1.9'
+$ScriptVersion = '2.2.0'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -790,6 +791,22 @@ elseif ($UserName -and $Password -and $IP -and ($Backup -or $Config -or $Clean -
 	if ($FailoverNow) { Failover -U $Username -P $Password -IP $IP }
 }
 else {
+	if (!$GuiChild) {
+		$arguments = @('-GuiChild')
+		foreach ($key in 'Username','Password','IP') {
+			if ($PSBoundParameters.ContainsKey($key)) { $arguments += "-$key '$($PSBoundParameters[$key].Replace("'","''"))'" }
+		}
+		$command = "& '$($PSCommandPath.Replace("'","''"))' $($arguments -join ' ')"
+		$encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+		$process = New-Object System.Diagnostics.ProcessStartInfo
+		$process.FileName = "$PSHOME\\powershell.exe"
+		$process.Arguments = "-NoProfile -STA -NonInteractive -EncodedCommand $encoded"
+		$process.UseShellExecute = $false
+		$process.CreateNoWindow = $true
+		$process.WindowStyle = 'Hidden'
+		$null = [System.Diagnostics.Process]::Start($process)
+		exit
+	}
 	$Form = New-Object System.Windows.Forms.Form
 	$Form.Text = "Easy NetScaler - v$ScriptVersion"
 	$Form.Size = New-Object System.Drawing.Size(335, 300)
@@ -868,14 +885,6 @@ else {
 	$script:GuiLog.Anchor = 'Top,Left,Right,Bottom'
 	$script:GuiLog.Visible = $false
 	$Form.Controls.Add($script:GuiLog)
-	$Form.Add_Shown({
-		$console = [EasyNSConsoleIcon]::GetConsoleWindow()
-		if ($console -ne [IntPtr]::Zero) { $null = [EasyNSConsoleIcon]::ShowWindow($console,0) }
-	})
-	$Form.Add_FormClosed({
-		$console = [EasyNSConsoleIcon]::GetConsoleWindow()
-		if ($console -ne [IntPtr]::Zero) { $null = [EasyNSConsoleIcon]::ShowWindow($console,5) }
-	})
 	$null = $Form.ShowDialog()
 }
 
