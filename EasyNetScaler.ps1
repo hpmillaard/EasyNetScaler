@@ -95,7 +95,7 @@ param(
 	[string[]]$CompareReports
 )
 
-$ScriptVersion = '2.1.8'
+$ScriptVersion = '2.1.9'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -207,11 +207,16 @@ public static class EasyNSConsoleIcon {
 
 Function Write-Host {
 	param([Parameter(Position=0,ValueFromRemainingArguments=$true)][object[]]$Object,[Alias('F')][ConsoleColor]$ForegroundColor,[switch]$NoNewline)
-	Microsoft.PowerShell.Utility\\Write-Host @PSBoundParameters
+	Microsoft.PowerShell.Utility\Write-Host @PSBoundParameters
 	if ($script:GuiLog -and $Object.Count) {
 		if (!$script:GuiLog.Visible) {
+			$screen = [System.Windows.Forms.Screen]::FromControl($script:GuiForm).WorkingArea
+			$height = [Math]::Min(180,$screen.Height - $script:GuiForm.Height - 20)
+			$height = [Math]::Max(100,$height)
+			$script:GuiForm.ClientSize = [System.Drawing.Size]::new($script:GuiForm.ClientSize.Width,$script:GuiForm.ClientSize.Height + $height)
+			$script:GuiForm.Top = $screen.Top + [Math]::Max(0,[int](($screen.Height - $script:GuiForm.Height) / 2))
+			$script:GuiLog.SetBounds(16,$script:GuiLog.Top,$script:GuiForm.ClientSize.Width - 32,$script:GuiForm.ClientSize.Height - $script:GuiLog.Top - 12)
 			$script:GuiLog.Visible = $true
-			$script:GuiForm.ClientSize = [System.Drawing.Size]::new($script:GuiForm.ClientSize.Width,$script:GuiForm.ClientSize.Height + 220)
 		}
 		$script:GuiLog.AppendText((($Object -join ' ') + $(if ($NoNewline) { '' } else { [Environment]::NewLine })))
 		$script:GuiLog.SelectionStart = $script:GuiLog.TextLength
@@ -859,7 +864,7 @@ else {
 	$script:GuiLog.Font = [System.Drawing.Font]::new('Consolas',9)
 	$script:GuiLog.BackColor = [System.Drawing.Color]::FromArgb(15,20,28)
 	$script:GuiLog.ForeColor = [System.Drawing.Color]::WhiteSmoke
-	$script:GuiLog.SetBounds(16,$Form.ClientSize.Height + 10,$Form.ClientSize.Width - 32,200)
+	$script:GuiLog.SetBounds(16,$Form.ClientSize.Height + 10,$Form.ClientSize.Width - 32,150)
 	$script:GuiLog.Anchor = 'Top,Left,Right,Bottom'
 	$script:GuiLog.Visible = $false
 	$Form.Controls.Add($script:GuiLog)
