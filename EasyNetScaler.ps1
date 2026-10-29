@@ -95,7 +95,7 @@ param(
 	[string[]]$CompareReports
 )
 
-$ScriptVersion = '2.1.6'
+$ScriptVersion = '2.1.7'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -490,7 +490,7 @@ Function PlanFailover($U, $P, $IP, $FOTime) {
 			$schdate = $selectedDateTime.ToString("dd/MM/yyyy", [System.Globalization.CultureInfo]::InvariantCulture)
 			$schendtime = $selectedDateTime.Addminutes(1).ToString("HH:mm")
 			$scriptPath = (Get-Item $PSCommandPath).FullName
-			$TaskName = "NetScaler_Planned_Forced_Failover_${IP}_$([Security.Principal.WindowsIdentity]::GetCurrent().User.Value)"
+			$TaskName = "NetScaler_Planned_Forced_Failover_$IP"
 			@"
 & '$scriptPath' -Username '$U' -Password '$P' -IP '$IP' -FailoverNow
 del `$PSCommandPath
