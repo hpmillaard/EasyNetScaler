@@ -95,7 +95,7 @@ param(
 	[string[]]$CompareReports
 )
 
-$ScriptVersion = '2.1.5'
+$ScriptVersion = '2.1.6'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -493,7 +493,6 @@ Function PlanFailover($U, $P, $IP, $FOTime) {
 			$TaskName = "NetScaler_Planned_Forced_Failover_${IP}_$([Security.Principal.WindowsIdentity]::GetCurrent().User.Value)"
 			@"
 & '$scriptPath' -Username '$U' -Password '$P' -IP '$IP' -FailoverNow
-schtasks /change /tn $TaskName /ed $schdate /et $schendtime /Z
 del `$PSCommandPath
 "@ | Out-File $ENV:WINDIR\TEMP\NSForcedFailover-$IP.ps1
 			try {
@@ -509,10 +508,16 @@ del `$PSCommandPath
 				$Action = $Task.Actions.Create(0)
 				$Action.Path = 'powershell.exe'
 				$Action.Arguments = "-ExecutionPolicy Bypass -File `"$ENV:WINDIR\TEMP\NSForcedFailover-$IP.ps1`""
-				$null = $Scheduler.GetFolder('\').RegisterTaskDefinition($TaskName, $Task, 6, $Task.Principal.UserId, $null, 3, $null)
+				$Task.Settings.DeleteExpiredTaskAfter = 'PT1M'
+				$Trigger.EndBoundary = $selectedDateTime.AddMinutes(1).ToString('s')
+				$TaskXml = "$ENV:TEMP\NSFailoverTask-$PID.xml"
+				$Task.XmlText | sc $TaskXml -Encoding Unicode
+				$Process = start schtasks.exe -ArgumentList "/create /tn `"$TaskName`" /xml `"$TaskXml`" /f" -Verb RunAs -Wait -PassThru
+				if ($Process.ExitCode -ne 0) { Write-Host "Failed to schedule failover (exitcode $($Process.ExitCode))" -F Red; return }
 				Write-Host "Planned failover scheduled for $selectedDateTime" -F Green
 			}
 			catch { Write-Host "Failed to schedule failover: $($_.Exception.Message)" -F Red }
+			finally { if ($TaskXml) { del $TaskXml -EA 0 } }
 		}
 	}
 }
