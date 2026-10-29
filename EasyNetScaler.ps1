@@ -95,7 +95,7 @@ param(
 	[string[]]$CompareReports
 )
 
-$ScriptVersion = '2.1.7'
+$ScriptVersion = '2.1.8'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -164,6 +164,7 @@ using System;
 using System.Runtime.InteropServices;
 public static class EasyNSConsoleIcon {
     [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 }
 '@
@@ -201,6 +202,21 @@ public static class EasyNSConsoleIcon {
 			$Control.ForeColor = [System.Drawing.Color]::FromArgb(24,31,43)
 			$Control.BorderStyle = 'FixedSingle'
 		}
+	}
+}
+
+Function Write-Host {
+	param([Parameter(Position=0,ValueFromRemainingArguments=$true)][object[]]$Object,[Alias('F')][ConsoleColor]$ForegroundColor,[switch]$NoNewline)
+	Microsoft.PowerShell.Utility\\Write-Host @PSBoundParameters
+	if ($script:GuiLog -and $Object.Count) {
+		if (!$script:GuiLog.Visible) {
+			$script:GuiLog.Visible = $true
+			$script:GuiForm.ClientSize = [System.Drawing.Size]::new($script:GuiForm.ClientSize.Width,$script:GuiForm.ClientSize.Height + 220)
+		}
+		$script:GuiLog.AppendText((($Object -join ' ') + $(if ($NoNewline) { '' } else { [Environment]::NewLine })))
+		$script:GuiLog.SelectionStart = $script:GuiLog.TextLength
+		$script:GuiLog.ScrollToCaret()
+		[System.Windows.Forms.Application]::DoEvents()
 	}
 }
 
@@ -835,6 +851,26 @@ else {
 	$CompareB.Add_Click({ Show-CompareDialog })
 
 	Style-Form $Form
+	$script:GuiForm = $Form
+	$script:GuiLog = New-Object System.Windows.Forms.TextBox
+	$script:GuiLog.Multiline = $true
+	$script:GuiLog.ReadOnly = $true
+	$script:GuiLog.ScrollBars = 'Vertical'
+	$script:GuiLog.Font = [System.Drawing.Font]::new('Consolas',9)
+	$script:GuiLog.BackColor = [System.Drawing.Color]::FromArgb(15,20,28)
+	$script:GuiLog.ForeColor = [System.Drawing.Color]::WhiteSmoke
+	$script:GuiLog.SetBounds(16,$Form.ClientSize.Height + 10,$Form.ClientSize.Width - 32,200)
+	$script:GuiLog.Anchor = 'Top,Left,Right,Bottom'
+	$script:GuiLog.Visible = $false
+	$Form.Controls.Add($script:GuiLog)
+	$Form.Add_Shown({
+		$console = [EasyNSConsoleIcon]::GetConsoleWindow()
+		if ($console -ne [IntPtr]::Zero) { $null = [EasyNSConsoleIcon]::ShowWindow($console,0) }
+	})
+	$Form.Add_FormClosed({
+		$console = [EasyNSConsoleIcon]::GetConsoleWindow()
+		if ($console -ne [IntPtr]::Zero) { $null = [EasyNSConsoleIcon]::ShowWindow($console,5) }
+	})
 	$null = $Form.ShowDialog()
 }
 
