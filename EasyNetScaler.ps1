@@ -95,7 +95,7 @@ param(
 	[string[]]$CompareReports
 )
 
-$ScriptVersion = '2.1.4'
+$ScriptVersion = '2.1.5'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -490,15 +490,17 @@ Function PlanFailover($U, $P, $IP, $FOTime) {
 			$schdate = $selectedDateTime.ToString("dd/MM/yyyy", [System.Globalization.CultureInfo]::InvariantCulture)
 			$schendtime = $selectedDateTime.Addminutes(1).ToString("HH:mm")
 			$scriptPath = (Get-Item $PSCommandPath).FullName
+			$TaskName = "NetScaler_Planned_Forced_Failover_${IP}_$([Security.Principal.WindowsIdentity]::GetCurrent().User.Value)"
 			@"
 & '$scriptPath' -Username '$U' -Password '$P' -IP '$IP' -FailoverNow
-schtasks /change /tn NetScaler_Planned_Forced_Failover_$IP /ed $schdate /et $schendtime /Z
+schtasks /change /tn $TaskName /ed $schdate /et $schendtime /Z
 del `$PSCommandPath
 "@ | Out-File $ENV:WINDIR\TEMP\NSForcedFailover-$IP.ps1
 			try {
 				$Scheduler = New-Object -ComObject Schedule.Service
 				$Scheduler.Connect()
 				$Task = $Scheduler.NewTask(0)
+				$Task.Principal.UserId = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 				$Task.Principal.LogonType = 3
 				$Task.Principal.RunLevel = 0
 				$Task.Settings.Enabled = $true
@@ -507,7 +509,7 @@ del `$PSCommandPath
 				$Action = $Task.Actions.Create(0)
 				$Action.Path = 'powershell.exe'
 				$Action.Arguments = "-ExecutionPolicy Bypass -File `"$ENV:WINDIR\TEMP\NSForcedFailover-$IP.ps1`""
-				$null = $Scheduler.GetFolder('\').RegisterTaskDefinition("NetScaler_Planned_Forced_Failover_$IP", $Task, 6, $null, $null, 3, $null)
+				$null = $Scheduler.GetFolder('\').RegisterTaskDefinition($TaskName, $Task, 6, $Task.Principal.UserId, $null, 3, $null)
 				Write-Host "Planned failover scheduled for $selectedDateTime" -F Green
 			}
 			catch { Write-Host "Failed to schedule failover: $($_.Exception.Message)" -F Red }
