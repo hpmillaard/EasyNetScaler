@@ -143,6 +143,21 @@ Function New-DateTimePicker ($TargetForm, $X, $Y, $Width, $Height) {
 }
 
 Function Style-Form($Window) {
+	if (!$script:CitrixIcon) {
+		$bitmap = [System.Drawing.Bitmap]::new(64,64)
+		$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+		$graphics.SmoothingMode = 'AntiAlias'
+		$graphics.FillEllipse([System.Drawing.Brushes]::DodgerBlue,0,0,63,63)
+		$pen = [System.Drawing.Pen]::new([System.Drawing.Color]::White,7)
+		$graphics.DrawArc($pen,8,8,48,48,55,250)
+		$graphics.DrawArc($pen,20,20,28,28,55,250)
+		$graphics.FillEllipse([System.Drawing.Brushes]::White,29,29,6,6)
+		$script:CitrixIcon = [System.Drawing.Icon]::FromHandle($bitmap.GetHicon())
+		$pen.Dispose()
+		$graphics.Dispose()
+		$bitmap.Dispose()
+	}
+	$Window.Icon = $script:CitrixIcon
 	$Window.BackColor = [System.Drawing.Color]::FromArgb(24,31,43)
 	$Window.ForeColor = [System.Drawing.Color]::WhiteSmoke
 	$Window.Font = New-Object System.Drawing.Font('Segoe UI',10)
