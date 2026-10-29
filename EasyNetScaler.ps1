@@ -158,6 +158,22 @@ Function Style-Form($Window) {
 		$bitmap.Dispose()
 	}
 	$Window.Icon = $script:CitrixIcon
+	if (!$script:ConsoleIconSet) {
+		Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class EasyNSConsoleIcon {
+    [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
+    [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+}
+'@
+		$console = [EasyNSConsoleIcon]::GetConsoleWindow()
+		if ($console -ne [IntPtr]::Zero) {
+			$null = [EasyNSConsoleIcon]::SendMessage($console,0x80,[IntPtr]0,$script:CitrixIcon.Handle)
+			$null = [EasyNSConsoleIcon]::SendMessage($console,0x80,[IntPtr]1,$script:CitrixIcon.Handle)
+		}
+		$script:ConsoleIconSet = $true
+	}
 	$Window.BackColor = [System.Drawing.Color]::FromArgb(24,31,43)
 	$Window.ForeColor = [System.Drawing.Color]::WhiteSmoke
 	$Window.Font = New-Object System.Drawing.Font('Segoe UI',10)
