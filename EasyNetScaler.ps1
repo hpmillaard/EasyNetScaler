@@ -95,7 +95,7 @@ param(
 	[string[]]$CompareReports
 )
 
-$ScriptVersion = '2.1.3'
+$ScriptVersion = '2.1.4'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -495,8 +495,22 @@ Function PlanFailover($U, $P, $IP, $FOTime) {
 schtasks /change /tn NetScaler_Planned_Forced_Failover_$IP /ed $schdate /et $schendtime /Z
 del `$PSCommandPath
 "@ | Out-File $ENV:WINDIR\TEMP\NSForcedFailover-$IP.ps1
-			schtasks /create /SC ONCE /sd $schdate /st $schtime /tn NetScaler_Planned_Forced_Failover_$IP /F /RU "$env:USERDOMAIN\$env:USERNAME" /NP /RL LIMITED /tr "powershell.exe -executionpolicy bypass -File $ENV:WINDIR\TEMP\NSForcedFailover-$IP.ps1"
-			Write-Host "Planned failover scheduled for $selectedDateTime" -F Green
+			try {
+				$Scheduler = New-Object -ComObject Schedule.Service
+				$Scheduler.Connect()
+				$Task = $Scheduler.NewTask(0)
+				$Task.Principal.LogonType = 3
+				$Task.Principal.RunLevel = 0
+				$Task.Settings.Enabled = $true
+				$Trigger = $Task.Triggers.Create(1)
+				$Trigger.StartBoundary = $selectedDateTime.ToString('s')
+				$Action = $Task.Actions.Create(0)
+				$Action.Path = 'powershell.exe'
+				$Action.Arguments = "-ExecutionPolicy Bypass -File `"$ENV:WINDIR\TEMP\NSForcedFailover-$IP.ps1`""
+				$null = $Scheduler.GetFolder('\').RegisterTaskDefinition("NetScaler_Planned_Forced_Failover_$IP", $Task, 6, $null, $null, 3, $null)
+				Write-Host "Planned failover scheduled for $selectedDateTime" -F Green
+			}
+			catch { Write-Host "Failed to schedule failover: $($_.Exception.Message)" -F Red }
 		}
 	}
 }
