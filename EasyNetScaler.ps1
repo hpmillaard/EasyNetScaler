@@ -95,7 +95,7 @@ param(
 	[string[]]$CompareReports
 )
 
-$ScriptVersion = '2.1.2'
+$ScriptVersion = '2.1.3'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -185,6 +185,7 @@ Function Check {
 		$tcpClient.Connect($IP, $Port)
 		if ($tcpClient.Connected) {
 			$tcpClient.Close()
+			if ($Quiet) { return $true }
 			$ptxt = "$PSScriptRoot\putty-check.txt"
 			Set-Content $ptxt "exit"
 			$process = Start-Process $putty "-ssh $IP -l $U -pw $P -m $ptxt" -PassThru -NoNewWindow
@@ -336,7 +337,7 @@ Function Upgrade-NS {
 		Write-Host "Upload Completed. Performing Upgrade" -F green
 
 		sc $ptxt "shell`necho start`ncd /var/nsinstall/$fwbase`ntar -zxvf $fwname`nrm $fwname`n./installns -g -G -N -y -Y -D --ignorecertcheckerrors`nexit"
-		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logoverwrite" -PassThru -NoNewWindow
+		$process = start $putty "-ssh $IP -l $U -pw $P -batch -m $ptxt -sessionlog $plog -logoverwrite" -PassThru -NoNewWindow
 		while ($true) {
 			$content = gc $plog
 			if ($content -match "Rebooting") {
@@ -360,7 +361,7 @@ Function Upgrade-NS {
 			}
 		}
 		Write-host ""
-		Stop-Process -Id $process.id -Force
+		if (!$process.HasExited) { Stop-Process -Id $process.Id -Force -EA 0 }
 
 		sc "$PSScriptRoot\upgrade-$IP.log" (gc $plog | Select-Object -skip ((gc $plog | select-string -pattern start).Linenumber[0]))
 		If ($Cmdline) {
