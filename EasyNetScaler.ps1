@@ -96,7 +96,7 @@ param(
 	[switch]$GuiChild
 )
 
-$ScriptVersion = '2.2.0'
+$ScriptVersion = '2.2.1'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -159,6 +159,9 @@ Function Style-Form($Window) {
 		$bitmap.Dispose()
 	}
 	$Window.Icon = $script:CitrixIcon
+	$null = [EasyNSConsoleIcon]::SetCurrentProcessExplicitAppUserModelID('EasyNetScaler.GUI')
+	$Window.ShowIcon = $true
+	$Window.ShowInTaskbar = $true
 	if (!$script:ConsoleIconSet) {
 		Add-Type -TypeDefinition @'
 using System;
@@ -167,6 +170,7 @@ public static class EasyNSConsoleIcon {
     [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("shell32.dll")] public static extern int SetCurrentProcessExplicitAppUserModelID([MarshalAs(UnmanagedType.LPWStr)] string appID);
 }
 '@
 		$console = [EasyNSConsoleIcon]::GetConsoleWindow()
@@ -885,6 +889,10 @@ else {
 	$script:GuiLog.Anchor = 'Top,Left,Right,Bottom'
 	$script:GuiLog.Visible = $false
 	$Form.Controls.Add($script:GuiLog)
+	$Form.Add_Shown({
+		$null = [EasyNSConsoleIcon]::SendMessage($Form.Handle,0x80,[IntPtr]0,$script:CitrixIcon.Handle)
+		$null = [EasyNSConsoleIcon]::SendMessage($Form.Handle,0x80,[IntPtr]1,$script:CitrixIcon.Handle)
+	})
 	$null = $Form.ShowDialog()
 }
 
