@@ -96,7 +96,7 @@ param(
 	[switch]$GuiChild
 )
 
-$ScriptVersion = '2.2.1'
+$ScriptVersion = '2.2.2'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -159,7 +159,6 @@ Function Style-Form($Window) {
 		$bitmap.Dispose()
 	}
 	$Window.Icon = $script:CitrixIcon
-	$null = [EasyNSConsoleIcon]::SetCurrentProcessExplicitAppUserModelID('EasyNetScaler.GUI')
 	$Window.ShowIcon = $true
 	$Window.ShowInTaskbar = $true
 	if (!$script:ConsoleIconSet) {
@@ -180,6 +179,7 @@ public static class EasyNSConsoleIcon {
 		}
 		$script:ConsoleIconSet = $true
 	}
+	$null = [EasyNSConsoleIcon]::SetCurrentProcessExplicitAppUserModelID('EasyNetScaler.GUI')
 	$Window.BackColor = [System.Drawing.Color]::FromArgb(24,31,43)
 	$Window.ForeColor = [System.Drawing.Color]::WhiteSmoke
 	$Window.Font = New-Object System.Drawing.Font('Segoe UI',10)
