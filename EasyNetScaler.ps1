@@ -96,7 +96,7 @@ param(
 	[switch]$GuiChild
 )
 
-$ScriptVersion = '2.2.5'
+$ScriptVersion = '2.2.6'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -202,7 +202,14 @@ public static class EasyNSConsoleIcon {
 			$Control.Cursor = [System.Windows.Forms.Cursors]::Hand
 			if ($Window.Text -like 'Easy NetScaler -*') {
 				switch -Regex ($Control.Text) {
-					'^(Backup|Config)
+					'^(Backup|Config)$' { $Control.BackColor = [System.Drawing.Color]::FromArgb(0,112,120); break }
+					'^Clean FS$' { $Control.BackColor = [System.Drawing.Color]::FromArgb(150,91,28); break }
+					'^(Upgrade|Plan Upgrade|Download FW)$' { $Control.BackColor = [System.Drawing.Color]::FromArgb(29,111,192); break }
+					'^(Failover NOW|Plan Failover)$' { $Control.BackColor = [System.Drawing.Color]::FromArgb(123,66,162); break }
+					'^(HA Status|Version)$' { $Control.BackColor = [System.Drawing.Color]::FromArgb(52,100,132); break }
+					'^(vServer Report|Compare)$' { $Control.BackColor = [System.Drawing.Color]::FromArgb(83,86,165); break }
+				}
+			}
 		}
 		elseif ($Control -is [System.Windows.Forms.TextBox]) {
 			$Control.BackColor = [System.Drawing.Color]::FromArgb(238,244,250)
