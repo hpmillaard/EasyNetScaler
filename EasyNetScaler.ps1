@@ -96,7 +96,7 @@ param(
 	[switch]$GuiChild
 )
 
-$ScriptVersion = '2.2.2'
+$ScriptVersion = '2.2.3'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -220,8 +220,12 @@ Function Write-Host {
 			$height = [Math]::Max(100,$height)
 			$script:GuiForm.ClientSize = [System.Drawing.Size]::new($script:GuiForm.ClientSize.Width,$script:GuiForm.ClientSize.Height + $height)
 			$script:GuiForm.Top = $screen.Top + [Math]::Max(0,[int](($screen.Height - $script:GuiForm.Height) / 2))
-			$script:GuiLog.SetBounds(16,$script:GuiLog.Top,$script:GuiForm.ClientSize.Width - 32,$script:GuiForm.ClientSize.Height - $script:GuiLog.Top - 12)
+			$script:GuiLog.SetBounds(16,$script:GuiLog.Top,$script:GuiForm.ClientSize.Width - 32,$script:GuiForm.ClientSize.Height - $script:GuiLog.Top - 48)
+			$script:ClearLog.Top = $script:GuiForm.ClientSize.Height - 36
+			$script:CopyLog.Top = $script:GuiForm.ClientSize.Height - 36
 			$script:GuiLog.Visible = $true
+			$script:ClearLog.Visible = $true
+			$script:CopyLog.Visible = $true
 		}
 		$script:GuiLog.AppendText((($Object -join ' ') + $(if ($NoNewline) { '' } else { [Environment]::NewLine })))
 		$script:GuiLog.SelectionStart = $script:GuiLog.TextLength
@@ -889,6 +893,14 @@ else {
 	$script:GuiLog.Anchor = 'Top,Left,Right,Bottom'
 	$script:GuiLog.Visible = $false
 	$Form.Controls.Add($script:GuiLog)
+	$script:ClearLog = New-Button $Form 'Clear log' 16 ($Form.ClientSize.Height + 170) 105 28
+	$script:ClearLog.Anchor = 'Bottom,Left'
+	$script:ClearLog.Visible = $false
+	$script:ClearLog.Add_Click({ $script:GuiLog.Clear() })
+	$script:CopyLog = New-Button $Form 'Copy' 130 ($Form.ClientSize.Height + 170) 105 28
+	$script:CopyLog.Anchor = 'Bottom,Left'
+	$script:CopyLog.Visible = $false
+	$script:CopyLog.Add_Click({ if ($script:GuiLog.TextLength) { [System.Windows.Forms.Clipboard]::SetText($script:GuiLog.Text) } })
 	$Form.Add_Shown({
 		$null = [EasyNSConsoleIcon]::SendMessage($Form.Handle,0x80,[IntPtr]0,$script:CitrixIcon.Handle)
 		$null = [EasyNSConsoleIcon]::SendMessage($Form.Handle,0x80,[IntPtr]1,$script:CitrixIcon.Handle)
