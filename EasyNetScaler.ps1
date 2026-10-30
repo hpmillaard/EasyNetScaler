@@ -96,7 +96,7 @@ param(
 	[switch]$GuiChild
 )
 
-$ScriptVersion = '2.2.7'
+$ScriptVersion = '2.2.8'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -816,7 +816,7 @@ else {
 		$command = "& '$($PSCommandPath.Replace("'","''"))' $($arguments -join ' ')"
 		$encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
 		$process = New-Object System.Diagnostics.ProcessStartInfo
-		$process.FileName = "$PSHOME\\powershell.exe"
+		$process.FileName = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
 		$process.Arguments = "-NoProfile -STA -NonInteractive -EncodedCommand $encoded"
 		$process.UseShellExecute = $false
 		$process.CreateNoWindow = $true
