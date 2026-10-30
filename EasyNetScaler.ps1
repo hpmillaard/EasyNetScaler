@@ -96,7 +96,7 @@ param(
 	[switch]$GuiChild
 )
 
-$ScriptVersion = '2.2.3'
+$ScriptVersion = '2.2.4'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -894,10 +894,20 @@ else {
 	$script:GuiLog.Visible = $false
 	$Form.Controls.Add($script:GuiLog)
 	$script:ClearLog = New-Button $Form 'Clear log' 16 ($Form.ClientSize.Height + 170) 105 28
+	$script:ClearLog.FlatStyle = 'Flat'
+	$script:ClearLog.FlatAppearance.BorderSize = 0
+	$script:ClearLog.BackColor = [System.Drawing.Color]::FromArgb(52,69,91)
+	$script:ClearLog.ForeColor = [System.Drawing.Color]::White
+	$script:ClearLog.Cursor = [System.Windows.Forms.Cursors]::Hand
 	$script:ClearLog.Anchor = 'Bottom,Left'
 	$script:ClearLog.Visible = $false
 	$script:ClearLog.Add_Click({ $script:GuiLog.Clear() })
 	$script:CopyLog = New-Button $Form 'Copy' 130 ($Form.ClientSize.Height + 170) 105 28
+	$script:CopyLog.FlatStyle = 'Flat'
+	$script:CopyLog.FlatAppearance.BorderSize = 0
+	$script:CopyLog.BackColor = [System.Drawing.Color]::FromArgb(52,69,91)
+	$script:CopyLog.ForeColor = [System.Drawing.Color]::White
+	$script:CopyLog.Cursor = [System.Windows.Forms.Cursors]::Hand
 	$script:CopyLog.Anchor = 'Bottom,Left'
 	$script:CopyLog.Visible = $false
 	$script:CopyLog.Add_Click({ if ($script:GuiLog.TextLength) { [System.Windows.Forms.Clipboard]::SetText($script:GuiLog.Text) } })
