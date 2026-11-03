@@ -96,7 +96,7 @@ param(
 	[switch]$GuiChild
 )
 
-$ScriptVersion = '2.2.13'
+$ScriptVersion = '2.2.14'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -407,12 +407,12 @@ Function Upgrade-NS {
 			$info.RedirectStandardOutput = $true
 			$info.RedirectStandardError = $true
 			$process = [System.Diagnostics.Process]::Start($info)
-			$output = $process.StandardOutput.ReadToEndAsync()
+			$errors = $process.StandardError.ReadToEndAsync()
 			$buffer = New-Object char[] 256
 			$line = ''
 			$progressStart = $script:GuiLog.TextLength
 			do {
-				$read = $process.StandardError.ReadAsync($buffer,0,$buffer.Length)
+				$read = $process.StandardOutput.ReadAsync($buffer,0,$buffer.Length)
 				while (!$read.IsCompleted) {
 					[System.Windows.Forms.Application]::DoEvents()
 					sleep -Milliseconds 50
@@ -435,7 +435,7 @@ Function Upgrade-NS {
 			Write-Host ''
 			$process.WaitForExit()
 			$exitCode = $process.ExitCode
-			if ($exitCode -ne 0 -and $output.Result.Trim()) { Write-Host $output.Result.Trim() -F Red }
+			if ($exitCode -ne 0 -and $errors.Result.Trim()) { Write-Host $errors.Result.Trim() -F Red }
 			$process.Close()
 		} else {
 			$process = start $pscp "-scp -batch -P 22 -l $U -pw $P ""$FWPath"" $IP`:/var/nsinstall/$fwbase/$fwname" -NoNewWindow -Wait -PassThru
