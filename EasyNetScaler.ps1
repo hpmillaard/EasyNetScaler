@@ -96,7 +96,7 @@ param(
 	[switch]$GuiChild
 )
 
-$ScriptVersion = '2.2.8'
+$ScriptVersion = '2.2.9'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -398,9 +398,50 @@ Function Upgrade-NS {
 			If ($Reboot -eq [System.Windows.Forms.DialogResult]::No) { return }
 		}
 		Write-Host "Uploading Firmware $($fw.name)" -F green
-		$process = start $pscp "-scp -batch -P 22 -l $U -pw $P ""$FWPath"" $IP`:/var/nsinstall/$fwbase/$fwname" -NoNewWindow -Wait -PassThru
-		if ($process.ExitCode -ne 0) {
-			Write-Host "Firmware upload failed (PSCP exitcode $($process.ExitCode)). Upgrade cancelled." -F Red
+		if ($script:GuiLog) {
+			$info = New-Object System.Diagnostics.ProcessStartInfo
+			$info.FileName = $pscp
+			$info.Arguments = "-scp -batch -P 22 -l $U -pw $P `"$FWPath`" $IP`:/var/nsinstall/$fwbase/$fwname"
+			$info.UseShellExecute = $false
+			$info.CreateNoWindow = $true
+			$info.RedirectStandardOutput = $true
+			$info.RedirectStandardError = $true
+			$process = [System.Diagnostics.Process]::Start($info)
+			$errors = $process.StandardError.ReadToEndAsync()
+			$buffer = New-Object char[] 256
+			$line = ''
+			$progressStart = $script:GuiLog.TextLength
+			do {
+				$read = $process.StandardOutput.ReadAsync($buffer,0,$buffer.Length)
+				while (!$read.IsCompleted) {
+					[System.Windows.Forms.Application]::DoEvents()
+					sleep -Milliseconds 50
+				}
+				for ($i = 0; $i -lt $read.Result; $i++) {
+					if ($buffer[$i] -eq "`r" -or $buffer[$i] -eq "`n") {
+						if ($line.Trim()) {
+							$script:GuiLog.Select($progressStart,$script:GuiLog.TextLength - $progressStart)
+							$script:GuiLog.SelectedText = $line.Trim()
+							$script:GuiLog.ScrollToCaret()
+						}
+						$line = ''
+					} else { $line += $buffer[$i] }
+			} while ($read.Result)
+			if ($line.Trim()) {
+				$script:GuiLog.Select($progressStart,$script:GuiLog.TextLength - $progressStart)
+				$script:GuiLog.SelectedText = $line.Trim()
+			}
+			Write-Host ''
+			$process.WaitForExit()
+			$exitCode = $process.ExitCode
+			if ($exitCode -ne 0 -and $errors.Result.Trim()) { Write-Host $errors.Result.Trim() -F Red }
+			$process.Close()
+		} else {
+			$process = start $pscp "-scp -batch -P 22 -l $U -pw $P ""$FWPath"" $IP`:/var/nsinstall/$fwbase/$fwname" -NoNewWindow -Wait -PassThru
+			$exitCode = $process.ExitCode
+		}
+		if ($exitCode -ne 0) {
+			Write-Host "Firmware upload failed (PSCP exitcode $exitCode). Upgrade cancelled." -F Red
 			del $ptxt, $plog -EA 0
 			return
 		}
