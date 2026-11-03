@@ -96,7 +96,7 @@ param(
 	[switch]$GuiChild
 )
 
-$ScriptVersion = '2.2.11'
+$ScriptVersion = '2.2.12'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -449,7 +449,7 @@ Function Upgrade-NS {
 		Write-Host "Upload Completed. Performing Upgrade" -F green
 
 		sc $ptxt "shell`necho start`ncd /var/nsinstall/$fwbase`ntar -zxvf $fwname`nrm $fwname`n./installns -g -G -N -y -Y -D --ignorecertcheckerrors`nexit"
-		$process = start $putty "-ssh $IP -l $U -pw $P -batch -m $ptxt -sessionlog $plog -logoverwrite" -PassThru -NoNewWindow
+		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logoverwrite" -PassThru -NoNewWindow
 		while ($true) {
 			$content = gc $plog
 			if ($content -match "Rebooting") {
