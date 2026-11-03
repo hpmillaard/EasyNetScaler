@@ -96,7 +96,7 @@ param(
 	[switch]$GuiChild
 )
 
-$ScriptVersion = '2.2.14'
+$ScriptVersion = '2.2.15'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -366,6 +366,19 @@ Function Clean-NS {
 	}
 }
 
+Function Set-UpgradeProgress {
+	param($Percent, $Status)
+	$text = "Firmware installatie: $Percent% ($Status)"
+	if ($script:GuiLog) {
+		$script:GuiLog.Select($script:UpgradeProgressStart,$script:UpgradeProgressLength)
+		$script:GuiLog.SelectedText = $text
+		$script:UpgradeProgressLength = $text.Length
+		$script:GuiLog.SelectionStart = $script:GuiLog.TextLength
+		$script:GuiLog.ScrollToCaret()
+		[System.Windows.Forms.Application]::DoEvents()
+	} else { Write-Host $text -F Green }
+}
+
 Function Upgrade-NS {
 	param($U, $P, $IP, $Fw)
 	If (Check -U $U -P $P -IP $IP -Port 22) {
@@ -451,37 +464,41 @@ Function Upgrade-NS {
 		sc $ptxt "shell`necho start`ncd /var/nsinstall/$fwbase`ntar -zxvf $fwname`nrm $fwname`n./installns -g -G -N -y -Y -D --ignorecertcheckerrors`nexit"
 		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logoverwrite" -PassThru -NoNewWindow
 		$progress = 0
+		$lastLine = 0
 		Write-Host "Firmware installatie: 0% (start)" -F Green
+		if ($script:GuiLog) {
+			$script:UpgradeProgressLength = "Firmware installatie: 0% (start)".Length
+			$script:UpgradeProgressStart = $script:GuiLog.TextLength - $script:UpgradeProgressLength - [Environment]::NewLine.Length
+		}
 		while ($true) {
-			$content = gc $plog
-			if ($content -match "Rebooting") {
-				Write-Host "Firmware installatie: 95% (reboot)" -F Green
+			$content = @(gc $plog -EA 0)
+			if ($content.Count -gt $lastLine) {
+				foreach ($line in $content[$lastLine..($content.Count - 1)]) {
+					if ($line -match 'installns:\s*\[\d+\]:|installns:|extracting|tar -zxvf') {
+						$next = [Math]::Min(90,$progress + 2)
+						if ($next -gt $progress) {
+							$progress = $next
+							Set-UpgradeProgress $progress 'geschat, installatie loopt'
+						}
+					}
+				}
+				$lastLine = $content.Count
+			}
+			if ($content -match 'ERROR:') {
+				Write-Host "ERROR DETECTED!" -F Red
+				break
+			}
+			if ($content -match 'Rebooting') {
+				Set-UpgradeProgress 95 'reboot'
 				Write-Host "Reboot detected." -F Green
 				Write-Host "Waiting for SSH (port 22) to become available again..." -F Yellow
 				Sleep 30
-				while (!(Check -U $U -P $P -IP $IP -Port 22 -Quiet)) {
-					Write-Host "." -NoNewline -F Yellow
-					Sleep 5
-				}
-				Write-Host "Firmware installatie: 100% (SSH beschikbaar)" -F Green
+				while (!(Check -U $U -P $P -IP $IP -Port 22 -Quiet)) { Sleep 5 }
+				Set-UpgradeProgress 100 'SSH beschikbaar'
 				Write-Host "SSH is available again on $IP" -F Green
 				break
 			}
-			elseif ($content -match "ERROR:") {
-				Write-Host "`nERROR DETECTED!" -F Red
-				break
-			}
-			else {
-				if ($progress -lt 25 -and $content -match 'tar -zxvf') {
-					$progress = 25
-					Write-Host "Firmware installatie: 25% (uitpakken)" -F Green
-				}
-				if ($progress -lt 75 -and $content -match 'installns -g') {
-					$progress = 75
-					Write-Host "Firmware installatie: 75% (installer gestart)" -F Green
-				}
-				Sleep 1
-			}
+			Sleep 1
 		}
 		Write-host ""
 		if (!$process.HasExited) { Stop-Process -Id $process.Id -Force -EA 0 }
