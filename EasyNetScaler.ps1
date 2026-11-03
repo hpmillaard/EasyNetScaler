@@ -353,7 +353,7 @@ Function Clean-NS {
 		$process.WaitForExit()
 		$process.Close()
 
-		$varL = @(gc $plog | ? { $_ -match '^\s*\S+\s+\S+\s+\S+\s+\S+\s+\d+%\s+/var\s*
+		$varL = @(gc $plog | ? { $_ -match '^\s*\S+\s+\S+\s+\S+\s+\S+\s+\d+%\s+/var\s*$' })
 		if ($varL.Count -ge 2) {
 			$usedSpaceBefore = (($varL[0] -split '\s+').Trim()[2]).replace("G", "")
 			$usedSpaceAfter = (($varL[-1] -split '\s+').Trim()[2]).replace("G", "")
