@@ -96,7 +96,7 @@ param(
 	[switch]$GuiChild
 )
 
-$ScriptVersion = '2.2.12'
+$ScriptVersion = '2.2.13'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -450,17 +450,21 @@ Function Upgrade-NS {
 
 		sc $ptxt "shell`necho start`ncd /var/nsinstall/$fwbase`ntar -zxvf $fwname`nrm $fwname`n./installns -g -G -N -y -Y -D --ignorecertcheckerrors`nexit"
 		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logoverwrite" -PassThru -NoNewWindow
+		$progress = 0
+		Write-Host "Firmware installatie: 0% (start)" -F Green
 		while ($true) {
 			$content = gc $plog
 			if ($content -match "Rebooting") {
-				Write-Host "`nReboot detected." -F Green
+				Write-Host "Firmware installatie: 95% (reboot)" -F Green
+				Write-Host "Reboot detected." -F Green
 				Write-Host "Waiting for SSH (port 22) to become available again..." -F Yellow
 				Sleep 30
 				while (!(Check -U $U -P $P -IP $IP -Port 22 -Quiet)) {
 					Write-Host "." -NoNewline -F Yellow
 					Sleep 5
 				}
-				Write-Host "`nSSH is available again on $IP" -F Green
+				Write-Host "Firmware installatie: 100% (SSH beschikbaar)" -F Green
+				Write-Host "SSH is available again on $IP" -F Green
 				break
 			}
 			elseif ($content -match "ERROR:") {
@@ -468,7 +472,14 @@ Function Upgrade-NS {
 				break
 			}
 			else {
-				Write-Host "." -F Green -NoNewline
+				if ($progress -lt 25 -and $content -match 'tar -zxvf') {
+					$progress = 25
+					Write-Host "Firmware installatie: 25% (uitpakken)" -F Green
+				}
+				if ($progress -lt 75 -and $content -match 'installns -g') {
+					$progress = 75
+					Write-Host "Firmware installatie: 75% (installer gestart)" -F Green
+				}
 				Sleep 1
 			}
 		}
