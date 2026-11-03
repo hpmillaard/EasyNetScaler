@@ -96,7 +96,7 @@ param(
 	[switch]$GuiChild
 )
 
-$ScriptVersion = '2.2.9'
+$ScriptVersion = '2.2.10'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -353,7 +353,623 @@ Function Clean-NS {
 		$process.WaitForExit()
 		$process.Close()
 
-		$varL = gc $plog | ? { $_ -match "/var" -and $_ -notmatch "find" }
+		$varL = @(gc $plog | ? { $_ -match '^\s*\S+\s+\S+\s+\S+\s+\S+\s+\d+%\s+/var\s*
+		if ($varL.Count -ge 2) {
+			$usedSpaceBefore = (($varL[0] -split '\s+').Trim()[2]).replace("G", "")
+			$usedSpaceAfter = (($varL[-1] -split '\s+').Trim()[2]).replace("G", "")
+			$usedDifference = $usedSpaceBefore - $usedSpaceAfter
+			Write-Host "used space before cleanup: ${usedSpaceBefore} GB" -F Green
+			Write-Host "used space after cleanup: ${usedSpaceAfter} GB" -F Green
+			Write-Host "space freed: ${usedDifference} GB" -F Green
+		}
+		del $ptxt, $plog -EA 0
+	}
+}
+
+Function Upgrade-NS {
+	param($U, $P, $IP, $Fw)
+	If (Check -U $U -P $P -IP $IP -Port 22) {
+		$time = get-date -Format yyMMddHHmm
+		$ptxt = "$PSScriptRoot\putty-$time.txt"
+		$plog = "$PSScriptRoot\putty-$time.log"
+		If (!($Fw)) {
+			$FileBrowser = New-Object System.Windows.Forms.OpenFileDialog
+			$FileBrowser.Title = "Select the firmware file"
+			$FileBrowser.Filter = "TGZ Files|build-*_nc_64.tgz"
+			$null = $FileBrowser.ShowDialog()
+			$FW = (gi $FileBrowser.FileName)
+		}
+		else {
+			if (Test-Path $FW) { $FW = gi $FW } else { Break }
+		}
+		$fwbase = $FW.BaseName
+		$fwname = $FW.Name
+		$fwpath = $FW.FullName
+
+		sc $ptxt "shell`ncd /var/nsinstall`nmkdir -p $fwbase`nexit"
+		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logoverwrite" -PassThru -NoNewWindow
+		$process.WaitForExit()
+		$process.Close()
+
+		$Active = $true
+		foreach ($line in (gc $plog)) { If ($line -match "Warning: You are connected to a secondary node") { $Active = $false; break } }
+		If ($Active) {
+			$Reboot = [System.Windows.Forms.MessageBox]::Show("The $IP does not seem to be a passive node in the HA configuration or there might not be a HA configuration at all.`n`nThe upgrade will reboot the NetScaler and this might interfere your users.`n`nAre you sure you want to continue?", "Confirm Reboot?", [System.Windows.Forms.MessageBoxButtons]::YesNo)
+			If ($Reboot -eq [System.Windows.Forms.DialogResult]::No) { return }
+		}
+		Write-Host "Uploading Firmware $($fw.name)" -F green
+		if ($script:GuiLog) {
+			$info = New-Object System.Diagnostics.ProcessStartInfo
+			$info.FileName = $pscp
+			$info.Arguments = "-scp -batch -P 22 -l $U -pw $P `"$FWPath`" $IP`:/var/nsinstall/$fwbase/$fwname"
+			$info.UseShellExecute = $false
+			$info.CreateNoWindow = $true
+			$info.RedirectStandardOutput = $true
+			$info.RedirectStandardError = $true
+			$process = [System.Diagnostics.Process]::Start($info)
+			$errors = $process.StandardError.ReadToEndAsync()
+			$buffer = New-Object char[] 256
+			$line = ''
+			$progressStart = $script:GuiLog.TextLength
+			do {
+				$read = $process.StandardOutput.ReadAsync($buffer,0,$buffer.Length)
+				while (!$read.IsCompleted) {
+					[System.Windows.Forms.Application]::DoEvents()
+					sleep -Milliseconds 50
+				}
+				for ($i = 0; $i -lt $read.Result; $i++) {
+					if ($buffer[$i] -eq "`r" -or $buffer[$i] -eq "`n") {
+						if ($line.Trim()) {
+							$script:GuiLog.Select($progressStart,$script:GuiLog.TextLength - $progressStart)
+							$script:GuiLog.SelectedText = $line.Trim()
+							$script:GuiLog.ScrollToCaret()
+						}
+						$line = ''
+					} else { $line += $buffer[$i] }
+			} while ($read.Result)
+			if ($line.Trim()) {
+				$script:GuiLog.Select($progressStart,$script:GuiLog.TextLength - $progressStart)
+				$script:GuiLog.SelectedText = $line.Trim()
+			}
+			Write-Host ''
+			$process.WaitForExit()
+			$exitCode = $process.ExitCode
+			if ($exitCode -ne 0 -and $errors.Result.Trim()) { Write-Host $errors.Result.Trim() -F Red }
+			$process.Close()
+		} else {
+			$process = start $pscp "-scp -batch -P 22 -l $U -pw $P ""$FWPath"" $IP`:/var/nsinstall/$fwbase/$fwname" -NoNewWindow -Wait -PassThru
+			$exitCode = $process.ExitCode
+		}
+		if ($exitCode -ne 0) {
+			Write-Host "Firmware upload failed (PSCP exitcode $exitCode). Upgrade cancelled." -F Red
+			del $ptxt, $plog -EA 0
+			return
+		}
+		Write-Host "Upload Completed. Performing Upgrade" -F green
+
+		sc $ptxt "shell`necho start`ncd /var/nsinstall/$fwbase`ntar -zxvf $fwname`nrm $fwname`n./installns -g -G -N -y -Y -D --ignorecertcheckerrors`nexit"
+		$process = start $putty "-ssh $IP -l $U -pw $P -batch -m $ptxt -sessionlog $plog -logoverwrite" -PassThru -NoNewWindow
+		while ($true) {
+			$content = gc $plog
+			if ($content -match "Rebooting") {
+				Write-Host "`nReboot detected." -F Green
+				Write-Host "Waiting for SSH (port 22) to become available again..." -F Yellow
+				Sleep 30
+				while (!(Check -U $U -P $P -IP $IP -Port 22 -Quiet)) {
+					Write-Host "." -NoNewline -F Yellow
+					Sleep 5
+				}
+				Write-Host "`nSSH is available again on $IP" -F Green
+				break
+			}
+			elseif ($content -match "ERROR:") {
+				Write-Host "`nERROR DETECTED!" -F Red
+				break
+			}
+			else {
+				Write-Host "." -F Green -NoNewline
+				Sleep 1
+			}
+		}
+		Write-host ""
+		if (!$process.HasExited) { Stop-Process -Id $process.Id -Force -EA 0 }
+
+		sc "$PSScriptRoot\upgrade-$IP.log" (gc $plog | Select-Object -skip ((gc $plog | select-string -pattern start).Linenumber[0]))
+		If ($Cmdline) {
+			$logpath = (gi "$PSScriptRoot\upgrade-$IP.log").FullName
+			Write-Host "You can view the logfile $logpath for more details about the upgrade" -F green
+		}
+		Else {
+			$ViewLog = [System.Windows.Forms.MessageBox]::Show("The upgrade completed, do you want to view the logfile?", "View upgrade logfile?", [System.Windows.Forms.MessageBoxButtons]::YesNo)
+			if ($ViewLog -eq [System.Windows.Forms.DialogResult]::Yes) { ii "$PSScriptRoot\upgrade-$IP.log" }
+		}
+		del $ptxt, $plog -EA 0
+	}
+}
+
+Function PlanUpgrade {
+	param($U, $P, $IP, $Fw, $UPTime)
+	if ($UPTime) {
+		$selectedDateTime = Get-Date $UPTime
+	}
+ else {
+		$PlanForm = New-Object System.Windows.Forms.Form
+		$PlanForm.Text = "Plan Upgrade"
+		$PlanForm.Size = New-Object System.Drawing.Size(350, 150)
+		$PlanForm.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+
+		$null = New-Label $PlanForm "Pick the time for the upgrade" 5 5 350 30 14 'bold'
+		$dateTimePicker = New-DateTimePicker $PlanForm 10 40 200 20
+
+		$OKB = New-Button $PlanForm "OK" 5 70 100 30
+		$OKB.DialogResult = [System.Windows.Forms.DialogResult]::OK
+
+		$CancelB = New-Button $PlanForm "Cancel" 110 70 100 30
+		$CancelB.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+
+		Style-Form $PlanForm
+		$result = $PlanForm.ShowDialog()
+		if ($result -eq [System.Windows.Forms.DialogResult]::OK) { $selectedDateTime = $dateTimePicker.Value }
+	}
+	if (!$Fw) {
+		$FileBrowser = New-Object System.Windows.Forms.OpenFileDialog
+		$FileBrowser.Title = "Select the firmware file"
+		$FileBrowser.Filter = "TGZ Files|build-*_nc_64.tgz"
+		$null = $FileBrowser.ShowDialog()
+		if ([string]::IsNullOrEmpty($FileBrowser.FileName)) { Write-Host "No firmware selected, cancelling planned upgrade." -F Yellow; return }
+		$Fw = $FileBrowser.FileName
+	}
+	if ($selectedDateTime) {
+		$schtime = $selectedDateTime.ToString("HH:mm")
+		$schdate = $selectedDateTime.ToString("dd/MM/yyyy", [System.Globalization.CultureInfo]::InvariantCulture)
+		$scriptPath = (Get-Item $PSCommandPath).FullName
+		@"
+PowerShell -ExecutionPolicy Bypass -File '$scriptPath' -Username $U -Password $P -IP $IP -Firmware '$Fw'
+schtasks /delete /tn NetScaler_Planned_Upgrade_$IP /F
+del `$PSCommandPath
+"@ | Out-File $ENV:WINDIR\TEMP\NSPlannedUpgrade-$IP.ps1
+		Start-Process cmd "/c schtasks /create /IT /SC ONCE /sd $schdate /st $schtime /tn NetScaler_Planned_Upgrade_$IP /F /RL HIGHEST /tr `"powershell.exe -executionpolicy bypass -File $ENV:WINDIR\TEMP\NSPlannedUpgrade-$IP.ps1`"" -Verb RunAs
+		Write-Host "Planned upgrade scheduled for $selectedDateTime" -F Green
+	}
+}
+
+Function Version {
+	param($U, $P, $IP)
+	If (!(Login -U $U -P $P -IP $IP)) { return }
+	$version = (irm "https://$IP/nitro/v1/config/nsversion" -Method GET @params).nsversion.version
+	Logout
+	Write-Host -f cyan $IP = $version
+}
+
+Function KillSecondaryAAA {
+	param($U, $P, $IP, $OldPrimary)
+	for ($i = 0; $i -lt 12; $i++) {
+		$ha = (irm "https://$IP/nitro/v1/config/hanode" -Method GET @params).hanode
+		$secondary = $ha | ? { $_.ipaddress -eq $OldPrimary -and $_.state -eq 'Secondary' } | select -First 1
+		if ($secondary) {
+			if (!(Login -U $U -P $P -IP $OldPrimary)) { return }
+			$R = irm "https://$OldPrimary/nitro/v1/config/aaasession?action=kill" -Method POST -Body (ConvertTo-Json @{aaasession = @{all = $true}}) @params
+			if ($R.errorcode -ne 0) { Write-Host "AAA session cleanup failed: $($R.message)" -F Red; return }
+			Write-Host "AAA sessions cleared on secondary node $OldPrimary" -F Green
+			return
+		}
+		sleep 5
+	}
+	Write-Host "Failover not confirmed; AAA sessions not cleared" -F Red
+}
+
+Function Failover {
+	param($U, $P, $IP)
+	If (!(Check -U $U -P $P -IP $IP -Port 443)) { return }
+	HAStatus  -U $U -P $P -IP $IP
+	Write-Host -f yellow "Starting Failover $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')"
+	If (!(Login -U $U -P $P -IP $IP)) { return }
+	$OldPrimary = ((irm "https://$IP/nitro/v1/config/hanode" -Method GET @params).hanode | ? state -eq "Primary" | select -First 1).ipaddress
+	$R = irm "https://$IP/nitro/v1/config/hafailover?action=force" -Method POST -Body (ConvertTo-Json @{"hafailover" = @{"force" = "true" } }) @params
+	$R
+	if ($R.errorcode -eq 0 -and $OldPrimary) { KillSecondaryAAA -U $U -P $P -IP $IP -OldPrimary $OldPrimary }
+	Write-Host -f green "Failover Completed $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')"
+	HAStatus -U $U -P $P -IP $IP
+}
+
+Function PlanFailover($U, $P, $IP, $FOTime) {
+	if (Check -U $U -P $P -IP $IP -Port 443) {
+		if ($FOTime) {
+			$selectedDateTime = Get-Date $FOTime
+		}
+		else {
+			$PlanForm = New-Object System.Windows.Forms.Form
+			$PlanForm.Text = "Plan Forced Failover"
+			$PlanForm.Size = New-Object System.Drawing.Size(350, 150)
+			$PlanForm.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+
+			$null = New-Label $PlanForm "Pick the time for the forced failover" 5 5 350 30 14 'bold'
+			$dateTimePicker = New-DateTimePicker $PlanForm 10 40 200 20
+
+			$OKB = New-Button $PlanForm "OK" 5 70 100 30
+			$OKB.DialogResult = [System.Windows.Forms.DialogResult]::OK
+
+			$CancelB = New-Button $PlanForm "Cancel" 110 70 100 30
+			$CancelB.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+
+			Style-Form $PlanForm
+			$result = $PlanForm.ShowDialog()
+			if ($result -eq [System.Windows.Forms.DialogResult]::OK) { $selectedDateTime = $dateTimePicker.Value }
+		}
+		if ($selectedDateTime) {
+			$schtime = $selectedDateTime.ToString("HH:mm")
+			$schdate = $selectedDateTime.ToString("dd/MM/yyyy", [System.Globalization.CultureInfo]::InvariantCulture)
+			$schendtime = $selectedDateTime.Addminutes(1).ToString("HH:mm")
+			$scriptPath = (Get-Item $PSCommandPath).FullName
+			$TaskName = "NetScaler_Planned_Forced_Failover_$IP"
+			@"
+& '$scriptPath' -Username '$U' -Password '$P' -IP '$IP' -FailoverNow
+del `$PSCommandPath
+"@ | Out-File $ENV:WINDIR\TEMP\NSForcedFailover-$IP.ps1
+			try {
+				$Scheduler = New-Object -ComObject Schedule.Service
+				$Scheduler.Connect()
+				$Task = $Scheduler.NewTask(0)
+				$Task.Principal.UserId = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+				$Task.Principal.LogonType = 3
+				$Task.Principal.RunLevel = 0
+				$Task.Settings.Enabled = $true
+				$Trigger = $Task.Triggers.Create(1)
+				$Trigger.StartBoundary = $selectedDateTime.ToString('s')
+				$Action = $Task.Actions.Create(0)
+				$Action.Path = 'powershell.exe'
+				$Action.Arguments = "-ExecutionPolicy Bypass -File `"$ENV:WINDIR\TEMP\NSForcedFailover-$IP.ps1`""
+				$Task.Settings.DeleteExpiredTaskAfter = 'PT1M'
+				$Trigger.EndBoundary = $selectedDateTime.AddMinutes(1).ToString('s')
+				$TaskXml = "$ENV:TEMP\NSFailoverTask-$PID.xml"
+				$Task.XmlText | sc $TaskXml -Encoding Unicode
+				$Process = start schtasks.exe -ArgumentList "/create /tn `"$TaskName`" /xml `"$TaskXml`" /f" -Verb RunAs -Wait -PassThru
+				if ($Process.ExitCode -ne 0) { Write-Host "Failed to schedule failover (exitcode $($Process.ExitCode))" -F Red; return }
+				Write-Host "Planned failover scheduled for $selectedDateTime" -F Green
+			}
+			catch { Write-Host "Failed to schedule failover: $($_.Exception.Message)" -F Red }
+			finally { if ($TaskXml) { del $TaskXml -EA 0 } }
+		}
+	}
+}
+
+Function HAStatus {
+	param($U, $P, $IP)
+	If (!(Login -U $U -P $P -IP $IP)) { return }
+	$ha = (irm "https://$IP/nitro/v1/config/hanode" -Method GET @params).hanode
+	Logout
+	Write-Host $ha.ipaddress[0] = $ha.state[0] = $ha.hastatus[0]
+	Write-Host $ha.ipaddress[1] = $ha.state[1] = $ha.hastatus[1]
+}
+
+Function Get-vServerStatus {
+	param($U, $P, $IP)
+	if (!(Login -U $U -P $P -IP $IP)) { return }
+	$vServers = @()
+	$types = @(
+		@{ key = 'lbvserver'; type = 'LB'; health = $true; ip = $true; port = $true },
+		@{ key = 'csvserver'; type = 'CS'; health = $true; ip = $true; port = $true },
+		@{ key = 'vpnvserver'; type = 'VPN'; health = $false; ip = $true; port = $true },
+		@{ key = 'gslbvserver'; type = 'GSLB'; health = $true; ip = $false; port = $false }
+	)
+	$ha = (irm "https://$IP/nitro/v1/config/hanode" -Method GET @params).hanode
+	$nodeState = if ($ha.state[0] -eq "Primary") { "Primary" } else { "Secondary" }
+	$version = (irm "https://$IP/nitro/v1/config/nsversion" -Method GET @params).nsversion.version
+	foreach ($t in $types) {
+		try {
+			$data = (irm "https://$IP/nitro/v1/config/$($t.key)" -Method GET @params).$($t.key)
+			foreach ($vs in $data) {
+				$vServers += [PSCustomObject]@{
+					Type           = $t.type
+					Name           = $vs.name
+					State          = $vs.curstate
+					EffectiveState = $vs.effectivestate
+					Health         = if ($t.health) { $vs.health } else { '-' }
+					IPAddress      = if ($t.ip) { $vs.ipv46 } else { '-' }
+					Port           = if ($t.port) { $vs.port } else { '-' }
+					ServiceType    = $vs.servicetype
+				}
+			}
+		}
+		catch { Write-Host "Could not retrieve $($t.type) vServers" -F Yellow }
+	}
+	Logout
+	return @{
+		IP        = $IP
+		NodeState = $nodeState
+		Version   = $version
+		Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
+		vServers  = $vServers
+	}
+}
+
+Function Export-vServerReport {
+	param($U, $P, $IP, $OutputPath)
+	$r = Get-vServerStatus -U $U -P $P -IP $IP
+	if (!$r) { return }
+	if (!$OutputPath) {
+		$ts = Get-Date -Format yyyy-MM-dd_HH-mm
+		$safeIP = $r.IP -replace '[^a-zA-Z0-9._-]', '_'
+		$safeNode = $r.NodeState -replace '[^a-zA-Z0-9._-]', '_'
+		$safeVer = $r.Version
+		if ($safeVer -match 'NS([\d.]+)[^\d]*Build[_ ]([\d.]+)') {
+			$safeVer = "$($Matches[1])_$($Matches[2])"
+		}
+		else {
+			$safeVer = $safeVer -replace '[^a-zA-Z0-9._-]', '_'
+		}
+		$OutputPath = "$PSScriptRoot\vServerReport_${safeIP}_${safeNode}_${safeVer}_$ts.csv"
+	}
+	$cols = 'Type', 'Name', 'State', 'EffectiveState', 'Health', 'IPAddress', 'Port', 'ServiceType'
+	$r.vServers | Select-Object $cols | Export-Csv $OutputPath -NoTypeInformation -Encoding UTF8
+	$up = ($r.vServers | Where-Object State -eq 'UP').Count
+	$down = ($r.vServers | Where-Object State -eq 'DOWN').Count
+	$other = $r.vServers.Count - $up - $down
+	Write-Host "`nvServer Report for $($r.IP) ($($r.NodeState))" -F Cyan
+	Write-Host "Version: $($r.Version)" -F Cyan
+	Write-Host "Total: $($r.vServers.Count) | UP: $up | DOWN: $down" -F White
+	if ($other) { Write-Host "OTHER: $other" -F Yellow }
+	Write-Host "Report saved to: $OutputPath" -F Green
+	return $OutputPath
+}
+
+Function Compare-vServerReport {
+	param($Report1Path, $Report2Path)
+	if (!(Test-Path $Report1Path) -or !(Test-Path $Report2Path)) { Write-Host "One or both report files not found!" -F Red; return }
+	$r1 = Import-Csv $Report1Path
+	$r2 = Import-Csv $Report2Path
+	Write-Host "`n========== vServer Comparison Report =========" -F Cyan
+	Write-Host "Report 1: $Report1Path" -F Yellow
+	Write-Host "Report 2: $Report2Path" -F Yellow
+	Write-Host "===============================================`n" -F Cyan
+	$diffs = @()
+	$names1 = $r1 | ForEach-Object { "$_($($_.Type))" }
+	$names2 = $r2 | ForEach-Object { "$_($($_.Type))" }
+	foreach ($a in $r1) {
+		$b = $r2 | Where-Object { $_.Name -eq $a.Name -and $_.Type -eq $a.Type }
+		if ($b) {
+			if ($a.State -ne $b.State) {
+				$chg = if ($a.State -eq 'UP' -and $b.State -ne 'UP') { 'DEGRADED' } elseif ($a.State -ne 'UP' -and $b.State -eq 'UP') { 'IMPROVED' } else { 'CHANGED' }
+				$diffs += "[$($a.Type)] $($a.Name): $($a.State) -> $($b.State) ($chg)"
+			}
+		}
+		else { $diffs += "[$($a.Type)] $($a.Name) missing in report 2 (was $($a.State))" }
+	}
+	foreach ($b in $r2 | Where-Object { ($r1 | Where-Object { $_.Name -eq $b.Name -and $_.Type -eq $b.Type }).Count -eq 0 }) {
+		$diffs += "[$($b.Type)] $($b.Name) new in report 2 ($($b.State))"
+	}
+	$up1 = ($r1 | Where-Object State -eq 'UP').Count
+	$down1 = ($r1 | Where-Object State -eq 'DOWN').Count
+	$up2 = ($r2 | Where-Object State -eq 'UP').Count
+	$down2 = ($r2 | Where-Object State -eq 'DOWN').Count
+	Write-Host "Summary:" -F White
+	Write-Host "  Report 1: Total=$($r1.Count), UP=$up1, DOWN=$down1" -F White
+	Write-Host "  Report 2: Total=$($r2.Count), UP=$up2, DOWN=$down2" -F White
+	if ($diffs.Count) {
+		Write-Host "`nDifferences:" -F Yellow
+		$diffs | ForEach-Object { Write-Host $_ -F Yellow }
+		$comparisonPath = "$PSScriptRoot\vServerComparison_$(Get-Date -Format 'yyyy_MM_dd-HH_mm').txt"
+		"`nDifferences:" | Out-File $comparisonPath -Append -Encoding UTF8
+		$diffs | Out-File $comparisonPath -Append -Encoding UTF8
+		Write-Host "`nComparison saved to: $comparisonPath" -F Green
+	}
+ else {
+		Write-Host "`nNo differences found! All vServers have the same state. No comparison file created." -F Green
+	}
+}
+
+Function Show-CompareDialog {
+	$CompareForm = New-Object System.Windows.Forms.Form
+	$CompareForm.Text = "Compare vServer Reports"
+	$CompareForm.Size = New-Object System.Drawing.Size(450, 150)
+	$CompareForm.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+
+	$labels = @("Before:", "After:")
+	$TBs = @()
+	for ($i = 0; $i -lt 2; $i++) {
+		$y = 10 + 30 * $i
+		New-Label $CompareForm $labels[$i] 5 $y
+		$TBs += New-TextBox $CompareForm 55 $y
+		$Browse = New-Button $CompareForm "Browse" 365 (8 + 30 * $i) 65 25
+		$Browse.Add_Click({
+				$fb = New-Object System.Windows.Forms.OpenFileDialog
+				$fb.Title = "Select Report $($labels[$i].Trim(':'))"
+				$fb.Filter = "CSV Files|*.csv"
+				$fb.InitialDirectory = $PSScriptRoot
+				if ($fb.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $TBs[$i].Text = $fb.FileName }
+			}.GetNewClosure())
+	}
+
+	$CompareB = New-Button $CompareForm "Compare" 5 75 100 30
+	$CompareB.Add_Click({
+			if ($TBs[0].Text -and $TBs[1].Text) {
+				Compare-vServerReport -Report1Path $TBs[0].Text -Report2Path $TBs[1].Text
+				$CompareForm.Close()
+			}
+			else {
+				[System.Windows.Forms.MessageBox]::Show("Please select both report files", "Error", "OK", "Error")
+			}
+		})
+
+	$CancelB = New-Button $CompareForm "Cancel" 110 75 100 30
+	$CancelB.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+
+	Style-Form $CompareForm
+	$null = $CompareForm.ShowDialog()
+}
+
+Function Update-Script {
+	try {
+		$RemoteScript = irm "https://raw.githubusercontent.com/hpmillaard/EasyNetScaler/main/EasyNetScaler.ps1" -UseBasicParsing
+		$LatestVersion = if ($RemoteScript -match '\$ScriptVersion\s*=\s*[''"]([0-9\.]+)[''"]') { $Matches[1] } else { throw "Version not found" }
+		
+		if ([Version]$LatestVersion -gt [Version]$ScriptVersion) {
+			if ([System.Windows.Forms.MessageBox]::Show("New version ($LatestVersion) available!`n`nUpdate now?", "Update", "YesNo", "Question") -eq "Yes") {
+				$RemoteScript | Out-File "$ENV:TEMP\update.ps1" -Encoding UTF8
+				Move-Item "$ENV:TEMP\update.ps1" $PSCommandPath -Force
+				Write-Host "Updated to version $LatestVersion! Restarting..." -F Green
+				$restartArgs = "-File `"$PSCommandPath`""
+				if ($Username) { $restartArgs += " -Username $Username" }
+				if ($Password) { $restartArgs += " -Password $Password" }
+				if ($IP) { $restartArgs += " -IP $IP" }
+				Start-Process PowerShell $restartArgs
+				$Form.Close()
+				return
+			}
+		}
+		else { [System.Windows.Forms.MessageBox]::Show("Already latest version ($ScriptVersion)!", "Up to date", "OK", "Information") }
+	}
+	catch { [System.Windows.Forms.MessageBox]::Show("Update failed: $($_.Exception.Message)", "Error", "OK", "Error") }
+}
+
+function TogglePWD {
+	if ($PasswordTB.UseSystemPasswordChar) {
+		$PasswordTB.UseSystemPasswordChar = $false
+		$ShowPwdB.Text = "Hide"
+	}
+ else {
+		$PasswordTB.UseSystemPasswordChar = $true
+		$ShowPwdB.Text = "Show"
+	}
+}
+
+if ($CompareReports -and $CompareReports.Count -eq 2) {
+	$Cmdline = $true
+	Compare-vServerReport -Report1Path $CompareReports[0] -Report2Path $CompareReports[1]
+}
+elseif ($UserName -and $Password -and $IP -and ($Backup -or $Config -or $Clean -or $Firmware -or $Failovertime -or $Upgradetime -or $vServerReport -or $FailoverNow)) {
+	$Cmdline = $true
+	if ($Backup) { Backup-NS -U $Username -P $Password -IP $IP }
+	if ($Config) { Config-NS -U $Username -P $Password -IP $IP }
+	if ($Clean) { Clean-NS -U $Username -P $Password -IP $IP }
+	if ($vServerReport) { Export-vServerReport -U $Username -P $Password -IP $IP }
+	if ($Firmware) { Upgrade-NS -U $Username -P $Password -IP $IP -Fw $Firmware }
+	if ($Failovertime) { PlanFailover -U $Username -P $Password -IP $IP -FOTime $Failovertime }
+	if ($Upgradetime -and $Firmware) { PlanUpgrade -U $Username -P $Password -IP $IP -UPTime $Upgradetime }
+	if ($FailoverNow) { Failover -U $Username -P $Password -IP $IP }
+}
+else {
+	if (!$GuiChild) {
+		$arguments = @('-GuiChild')
+		foreach ($key in 'Username','Password','IP') {
+			if ($PSBoundParameters.ContainsKey($key)) { $arguments += "-$key '$($PSBoundParameters[$key].Replace("'","''"))'" }
+		}
+		$command = "& '$($PSCommandPath.Replace("'","''"))' $($arguments -join ' ')"
+		$encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+		$process = New-Object System.Diagnostics.ProcessStartInfo
+		$process.FileName = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+		$process.Arguments = "-NoProfile -STA -NonInteractive -EncodedCommand $encoded"
+		$process.UseShellExecute = $false
+		$process.CreateNoWindow = $true
+		$process.WindowStyle = 'Hidden'
+		$null = [System.Diagnostics.Process]::Start($process)
+		exit
+	}
+	$Form = New-Object System.Windows.Forms.Form
+	$Form.Text = "Easy NetScaler - v$ScriptVersion"
+	$Form.Size = New-Object System.Drawing.Size(335, 300)
+	$Form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+
+	$null = New-Label $Form "Easy NetScaler Tool" 5 0 190 25 14 'bold'
+
+	$VersionB = New-Button $Form "v$ScriptVersion" 260 0 50 20
+	$VersionB.Add_Click({ Update-Script })
+
+	$null = New-Label $Form "Username:" 5 30 75 20 10 'regular'
+	$UserNameTB = New-TextBox $Form 80 30 150 20
+	if ($Username) { $UserNameTB.Text = $UserName } else { $UserNameTB.Text = "nsroot" }
+
+	$null = New-Label $Form "Password:" 5 55 75 20 10 'regular'
+	$PasswordTB = New-TextBox $Form 80 55 150 20
+	$PasswordTB.Text = "$Password"
+	$PasswordTB.UseSystemPasswordChar = $true
+	$ShowPwdB = New-Button $Form "Show" 235 55 50 20
+	$ShowPwdB.Add_Click({ TogglePWD })
+
+	$null = New-Label $Form "IP:" 5 80 75 20 10 'regular'
+	$IPTB = New-TextBox $Form 80 80 150 20
+	$IPTB.Text = $IP
+
+	# Row 1: Backup operations
+	$BackupB = New-Button $Form "Backup" 5 110 100 30
+	$BackupB.Add_Click({ Backup-NS -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text })
+
+	$ConfigB = New-Button $Form "Config" 110 110 100 30
+	$ConfigB.Add_Click({ Config-NS -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text })
+
+	$CleanB = New-Button $Form "Clean FS" 215 110 100 30
+	$CleanB.Add_Click({ Clean-NS -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text })
+
+	# Row 2: Upgrade operations
+	$UpgradeB = New-Button $Form "Upgrade" 5 145 100 30
+	$UpgradeB.Add_Click({ Upgrade-NS -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text })
+
+	$PlanUpgradeB = New-Button $Form "Plan Upgrade" 110 145 100 30
+	$PlanUpgradeB.Add_Click({ PlanUpgrade -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text })
+
+	$DownloadB = New-Button $Form "Download FW" 215 145 100 30
+	$DownloadB.Add_Click({ Start "https://www.citrix.com/downloads/citrix-adc/" })
+
+	# Row 3: Failover operations
+	$FailoverB = New-Button $Form "Failover NOW" 5 180 100 30
+	$FailoverB.Add_Click({ Failover -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text })
+
+	$PlanFailoverB = New-Button $Form "Plan Failover" 110 180 100 30
+	$PlanFailoverB.Add_Click({ PlanFailover -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text })
+
+	$HAB = New-Button $Form "HA Status" 215 180 100 30
+	$HAB.Add_Click({ HAStatus -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text })
+
+	# Row 4: Status and reports
+	$VerB = New-Button $Form "Version" 5 215 100 30
+	$VerB.Add_Click({ Version -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text })
+
+	$vServerReportB = New-Button $Form "vServer Report" 110 215 100 30
+	$vServerReportB.Add_Click({ Export-vServerReport -U $UsernameTB.Text -P $PasswordTB.Text -IP $IPTB.Text })
+
+	$CompareB = New-Button $Form "Compare" 215 215 100 30
+	$CompareB.Add_Click({ Show-CompareDialog })
+
+	Style-Form $Form
+	$script:GuiForm = $Form
+	$script:GuiLog = New-Object System.Windows.Forms.TextBox
+	$script:GuiLog.Multiline = $true
+	$script:GuiLog.ReadOnly = $true
+	$script:GuiLog.ScrollBars = 'Vertical'
+	$script:GuiLog.Font = [System.Drawing.Font]::new('Consolas',9)
+	$script:GuiLog.BackColor = [System.Drawing.Color]::FromArgb(15,20,28)
+	$script:GuiLog.ForeColor = [System.Drawing.Color]::WhiteSmoke
+	$script:GuiLog.SetBounds(16,$Form.ClientSize.Height + 10,$Form.ClientSize.Width - 32,150)
+	$script:GuiLog.Anchor = 'Top,Left,Right,Bottom'
+	$script:GuiLog.Visible = $false
+	$Form.Controls.Add($script:GuiLog)
+	$script:ClearLog = New-Button $Form 'Clear log' 16 ($Form.ClientSize.Height + 170) 105 28
+	$script:ClearLog.FlatStyle = 'Flat'
+	$script:ClearLog.FlatAppearance.BorderSize = 0
+	$script:ClearLog.BackColor = [System.Drawing.Color]::FromArgb(52,69,91)
+	$script:ClearLog.ForeColor = [System.Drawing.Color]::White
+	$script:ClearLog.Cursor = [System.Windows.Forms.Cursors]::Hand
+	$script:ClearLog.Anchor = 'Bottom,Left'
+	$script:ClearLog.Visible = $false
+	$script:ClearLog.Add_Click({ $script:GuiLog.Clear() })
+	$script:CopyLog = New-Button $Form 'Copy' 130 ($Form.ClientSize.Height + 170) 105 28
+	$script:CopyLog.FlatStyle = 'Flat'
+	$script:CopyLog.FlatAppearance.BorderSize = 0
+	$script:CopyLog.BackColor = [System.Drawing.Color]::FromArgb(52,69,91)
+	$script:CopyLog.ForeColor = [System.Drawing.Color]::White
+	$script:CopyLog.Cursor = [System.Windows.Forms.Cursors]::Hand
+	$script:CopyLog.Anchor = 'Bottom,Left'
+	$script:CopyLog.Visible = $false
+	$script:CopyLog.Add_Click({ if ($script:GuiLog.TextLength) { [System.Windows.Forms.Clipboard]::SetText($script:GuiLog.Text) } })
+	$Form.Add_Shown({
+		$null = [EasyNSConsoleIcon]::SendMessage($Form.Handle,0x80,[IntPtr]0,$script:CitrixIcon.Handle)
+		$null = [EasyNSConsoleIcon]::SendMessage($Form.Handle,0x80,[IntPtr]1,$script:CitrixIcon.Handle)
+	})
+	$null = $Form.ShowDialog()
+}
+
+del $putty, $pscp -EA 0
+ })
 		if ($varL.Count -eq 2) {
 			$usedSpaceBefore = (($varL[0] -split '\s+').Trim()[2]).replace("G", "")
 			$usedSpaceAfter = (($varL[1] -split '\s+').Trim()[2]).replace("G", "")
