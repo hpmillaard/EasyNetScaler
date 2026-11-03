@@ -96,7 +96,7 @@ param(
 	[switch]$GuiChild
 )
 
-$ScriptVersion = '2.2.16'
+$ScriptVersion = '2.2.17'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -462,7 +462,9 @@ Function Upgrade-NS {
 		Write-Host "Upload Completed. Performing Upgrade" -F green
 
 		sc $ptxt "shell`necho start`ncd /var/nsinstall/$fwbase`ntar -zxvf $fwname`nrm $fwname`n./installns -g -G -N -y -Y -D --ignorecertcheckerrors`nexit"
-		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logoverwrite" -PassThru -NoNewWindow
+		$plink = "$PSScriptRoot\plink.exe"
+		if (!(Test-Path $plink)) { Start-BitsTransfer "https://the.earth.li/~sgtatham/putty/latest/w32/plink.exe" $plink }
+		$process = start $plink "-ssh $IP -l $U -pw $P -t -batch -sessionlog $plog -logoverwrite" -RedirectStandardInput $ptxt -WindowStyle Hidden -PassThru
 		$progress = 0
 		$lastLine = 0
 		$pythonStart = $null
