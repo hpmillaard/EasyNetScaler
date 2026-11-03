@@ -96,7 +96,7 @@ param(
 	[switch]$GuiChild
 )
 
-$ScriptVersion = '2.2.15'
+$ScriptVersion = '2.2.16'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -465,6 +465,24 @@ Function Upgrade-NS {
 		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logoverwrite" -PassThru -NoNewWindow
 		$progress = 0
 		$lastLine = 0
+		$pythonStart = $null
+		$phases = @(
+			@('Installation is starting',5,'voorbereiding'),
+			@('Check version compatibility',10,'compatibiliteit'),
+			@('Checking certificate digest',15,'certificaten'),
+			@('BEGIN KERNEL_COPY',25,'kernel kopiëren'),
+			@('END KERNEL_COPY',35,'kernel gereed'),
+			@('Installing GUI to gui_new',45,'GUI installeren'),
+			@('Installing NITRO',50,'NITRO installeren'),
+			@('Installing MASTools scripts',55,'tools installeren'),
+			@('Installing Geo-IP DB',60,'Geo-IP installeren'),
+			@('Extracting python',65,'Python uitpakken'),
+			@('Extracting perl5',70,'Perl uitpakken'),
+			@('Extracting pgsql',75,'PostgreSQL uitpakken'),
+			@('Extracting nextgenapi',80,'API uitpakken'),
+			@('Moving installns_post_boot',85,'post-boot voorbereiden'),
+			@('Creating nextgenapi upgrade script',90,'afronden')
+		)
 		Write-Host "Firmware installatie: 0% (start)" -F Green
 		if ($script:GuiLog) {
 			$script:UpgradeProgressLength = "Firmware installatie: 0% (start)".Length
@@ -474,11 +492,12 @@ Function Upgrade-NS {
 			$content = @(gc $plog -EA 0)
 			if ($content.Count -gt $lastLine) {
 				foreach ($line in $content[$lastLine..($content.Count - 1)]) {
-					if ($line -match 'installns:\s*\[\d+\]:|installns:|extracting|tar -zxvf') {
-						$next = [Math]::Min(90,$progress + 2)
-						if ($next -gt $progress) {
-							$progress = $next
-							Set-UpgradeProgress $progress 'geschat, installatie loopt'
+					foreach ($phase in $phases) {
+						if ($line -match [regex]::Escape($phase[0]) -and $phase[1] -gt $progress) {
+							$progress = $phase[1]
+							if ($progress -eq 65) { $pythonStart = Get-Date }
+							else { $pythonStart = $null }
+							Set-UpgradeProgress $progress $phase[2]
 						}
 					}
 				}
@@ -498,6 +517,7 @@ Function Upgrade-NS {
 				Write-Host "SSH is available again on $IP" -F Green
 				break
 			}
+			if ($pythonStart) { Set-UpgradeProgress 65 ("Python uitpakken: {0}s" -f [int]((Get-Date) - $pythonStart).TotalSeconds) }
 			Sleep 1
 		}
 		Write-host ""
