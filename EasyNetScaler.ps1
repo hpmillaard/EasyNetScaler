@@ -658,10 +658,15 @@ Function PlanFailover($U, $P, $IP, $FOTime) {
 			$scriptPath = (Get-Item $PSCommandPath).FullName
 			$TaskName = "NetScaler_Planned_Forced_Failover_$IP"
 			@"
-Start-Transcript -Path `"`$env:TEMP\NSFailover-$IP.log`" -Append
-if ((Get-Date) -gt ([datetime]'$($selectedDateTime.ToString('s'))').AddMinutes(1)) { Write-Output 'Scheduled failover expired; skipping late execution'; Stop-Transcript; exit 1 }
-& '$scriptPath' -Username '$U' -Password '$P' -IP '$IP' -FailoverNow
-Stop-Transcript
+`$log = Join-Path `$env:WINDIR 'Temp\NSFailover-$IP.log'
+Add-Content `$log "[`$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')] Scheduled task started"
+Start-Transcript `$log -Append
+try {
+    if ((Get-Date) -gt ([datetime]'$($selectedDateTime.ToString('s'))').AddMinutes(1)) { Write-Output 'Scheduled failover expired; skipping late execution'; exit 1 }
+    & '$scriptPath' -Username '$U' -Password '$P' -IP '$IP' -FailoverNow
+    if (!`$?) { Write-Output 'Failover script reported an error'; exit 1 }
+} catch { Write-Output "Scheduled failover exception: `$_"; exit 1 }
+finally { Stop-Transcript }
 del `$PSCommandPath
 "@ | Out-File $ENV:WINDIR\TEMP\NSForcedFailover-$IP.ps1
 			try {
@@ -682,6 +687,7 @@ del `$PSCommandPath
 				$Task.XmlText | sc $TaskXml -Encoding Unicode
 				$Process = start schtasks.exe -ArgumentList "/create /tn `"$TaskName`" /xml `"$TaskXml`" /f" -Verb RunAs -Wait -PassThru
 				if ($Process.ExitCode -ne 0) { Write-Host "Failed to schedule failover (exitcode $($Process.ExitCode))" -F Red; return }
+				Add-Content "$ENV:WINDIR\Temp\NSFailover-$IP.log" "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')] Task registered: $TaskName for $selectedDateTime"
 				Write-Host "Planned failover scheduled for $selectedDateTime (SYSTEM task: $TaskName)" -F Green
 			}
 			catch { Write-Host "Failed to schedule failover: $($_.Exception.Message)" -F Red }
