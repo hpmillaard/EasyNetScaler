@@ -462,9 +462,7 @@ Function Upgrade-NS {
 		Write-Host "Upload Completed. Performing Upgrade" -F green
 
 		sc $ptxt "shell`necho start`ncd /var/nsinstall/$fwbase`ntar -zxvf $fwname`nrm $fwname`n./installns -g -G -N -y -Y -D --ignorecertcheckerrors`nexit"
-		$plink = "$PSScriptRoot\plink.exe"
-		if (!(Test-Path $plink)) { Start-BitsTransfer "https://the.earth.li/~sgtatham/putty/latest/w32/plink.exe" $plink }
-		$process = start $plink "-ssh $IP -l $U -pw $P -t -batch -sessionlog $plog -logoverwrite" -RedirectStandardInput $ptxt -WindowStyle Hidden -PassThru
+		$process = start $putty "-ssh $IP -l $U -pw $P -m $ptxt -sessionlog $plog -logoverwrite" -PassThru
 		$progress = 0
 		$lastLine = 0
 		$pythonStart = $null
@@ -510,6 +508,7 @@ Function Upgrade-NS {
 				break
 			}
 			if ($content -match 'Rebooting') {
+				if (!$process.HasExited) { $process.Kill() }
 				Set-UpgradeProgress 95 'reboot'
 				Write-Host "Reboot detected." -F Green
 				Write-Host "Waiting for SSH (port 22) to become available again..." -F Yellow
@@ -517,6 +516,10 @@ Function Upgrade-NS {
 				while (!(Check -U $U -P $P -IP $IP -Port 22 -Quiet)) { Sleep 5 }
 				Set-UpgradeProgress 100 'SSH beschikbaar'
 				Write-Host "SSH is available again on $IP" -F Green
+				break
+			}
+			if ($process.HasExited) {
+				Write-Host "PuTTY stopped before reboot was detected. Check $plog" -F Red
 				break
 			}
 			if ($pythonStart) { Set-UpgradeProgress 65 ("Python uitpakken: {0}s" -f [int]((Get-Date) - $pythonStart).TotalSeconds) }
@@ -1019,4 +1022,4 @@ else {
 	$null = $Form.ShowDialog()
 }
 
-del $putty, $pscp -EA 0
+del $putty, $pscp -EA 0
