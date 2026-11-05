@@ -1022,4 +1022,4 @@ else {
 	$null = $Form.ShowDialog()
 }
 
-del $putty, $pscp -EA 0
+del $putty, $pscp -EA 0
