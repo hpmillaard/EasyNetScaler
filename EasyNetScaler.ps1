@@ -221,6 +221,7 @@ public static class EasyNSConsoleIcon {
 
 Function Write-Host {
 	param([Parameter(Position=0,ValueFromRemainingArguments=$true)][object[]]$Object,[Alias('F')][ConsoleColor]$ForegroundColor,[switch]$NoNewline)
+	if ($Object.Count -and !$NoNewline) { $Object = @("[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')]") + $Object; $PSBoundParameters.Object = $Object }
 	Microsoft.PowerShell.Utility\Write-Host @PSBoundParameters
 	if ($script:GuiLog -and $Object.Count) {
 		if (!$script:GuiLog.Visible) {
@@ -657,29 +658,31 @@ Function PlanFailover($U, $P, $IP, $FOTime) {
 			$scriptPath = (Get-Item $PSCommandPath).FullName
 			$TaskName = "NetScaler_Planned_Forced_Failover_$IP"
 			@"
+Start-Transcript -Path `"`$env:TEMP\NSFailover-$IP.log`" -Append
+if ((Get-Date) -gt ([datetime]'$($selectedDateTime.ToString('s'))').AddMinutes(1)) { Write-Output 'Scheduled failover expired; skipping late execution'; Stop-Transcript; exit 1 }
 & '$scriptPath' -Username '$U' -Password '$P' -IP '$IP' -FailoverNow
+Stop-Transcript
 del `$PSCommandPath
 "@ | Out-File $ENV:WINDIR\TEMP\NSForcedFailover-$IP.ps1
 			try {
 				$Scheduler = New-Object -ComObject Schedule.Service
 				$Scheduler.Connect()
 				$Task = $Scheduler.NewTask(0)
-				$Task.Principal.UserId = [Security.Principal.WindowsIdentity]::GetCurrent().Name
-				$Task.Principal.LogonType = 3
-				$Task.Principal.RunLevel = 0
+				$Task.Principal.UserId = 'SYSTEM'
+				$Task.Principal.LogonType = 5
+				$Task.Principal.RunLevel = 1
 				$Task.Settings.Enabled = $true
+				$Task.Settings.StartWhenAvailable = $true
 				$Trigger = $Task.Triggers.Create(1)
 				$Trigger.StartBoundary = $selectedDateTime.ToString('s')
 				$Action = $Task.Actions.Create(0)
 				$Action.Path = 'powershell.exe'
 				$Action.Arguments = "-ExecutionPolicy Bypass -File `"$ENV:WINDIR\TEMP\NSForcedFailover-$IP.ps1`""
-				$Task.Settings.DeleteExpiredTaskAfter = 'PT1M'
-				$Trigger.EndBoundary = $selectedDateTime.AddMinutes(1).ToString('s')
 				$TaskXml = "$ENV:TEMP\NSFailoverTask-$PID.xml"
 				$Task.XmlText | sc $TaskXml -Encoding Unicode
 				$Process = start schtasks.exe -ArgumentList "/create /tn `"$TaskName`" /xml `"$TaskXml`" /f" -Verb RunAs -Wait -PassThru
 				if ($Process.ExitCode -ne 0) { Write-Host "Failed to schedule failover (exitcode $($Process.ExitCode))" -F Red; return }
-				Write-Host "Planned failover scheduled for $selectedDateTime" -F Green
+				Write-Host "Planned failover scheduled for $selectedDateTime (SYSTEM task: $TaskName)" -F Green
 			}
 			catch { Write-Host "Failed to schedule failover: $($_.Exception.Message)" -F Red }
 			finally { if ($TaskXml) { del $TaskXml -EA 0 } }
