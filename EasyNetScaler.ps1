@@ -659,6 +659,7 @@ Function PlanFailover($U, $P, $IP, $FOTime) {
 			$TaskName = "NetScaler_Planned_Forced_Failover_$IP"
 			@"
 Start-Transcript -Path `"`$env:TEMP\NSFailover-$IP.log`" -Append
+if ((Get-Date) -gt ([datetime]'$($selectedDateTime.ToString('s'))').AddMinutes(1)) { Write-Output 'Scheduled failover expired; skipping late execution'; Stop-Transcript; exit 1 }
 & '$scriptPath' -Username '$U' -Password '$P' -IP '$IP' -FailoverNow
 Stop-Transcript
 del `$PSCommandPath
