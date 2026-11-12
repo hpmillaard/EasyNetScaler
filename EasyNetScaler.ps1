@@ -246,8 +246,6 @@ Function Write-Host {
 
 Function Check {
 	param($U, $P, $IP, $Port, [switch]$Quiet)
-	If (!(Test-Path $putty)) { Start-BitsTransfer 'https://the.earth.li/~sgtatham/putty/latest/w32/putty.exe' $putty }
-	If (!(Test-Path $pscp)) { Start-BitsTransfer 'https://the.earth.li/~sgtatham/putty/latest/w32/pscp.exe' $pscp }
 	If ([string]::IsNullOrEmpty($U)) { msgbox "Username can't be empty"; return $false }
 	If ([string]::IsNullOrEmpty($P)) { msgbox "Password can't be empty"; return $false }
 	If ([string]::IsNullOrEmpty($IP)) { msgbox "IP can't be empty"; return $false }
@@ -256,7 +254,9 @@ Function Check {
 		$tcpClient.Connect($IP, $Port)
 		if ($tcpClient.Connected) {
 			$tcpClient.Close()
-			if ($Quiet) { return $true }
+			if ($Quiet -or $Port -eq 443) { return $true }
+			If (!(Test-Path $putty)) { Start-BitsTransfer 'https://the.earth.li/~sgtatham/putty/latest/w32/putty.exe' $putty }
+			If (!(Test-Path $pscp)) { Start-BitsTransfer 'https://the.earth.li/~sgtatham/putty/latest/w32/pscp.exe' $pscp }
 			$ptxt = "$PSScriptRoot\putty-check.txt"
 			Set-Content $ptxt "exit"
 			$process = Start-Process $putty "-ssh $IP -l $U -pw $P -m $ptxt" -PassThru -NoNewWindow
@@ -623,6 +623,7 @@ Function Failover {
 	If (!(Login -U $U -P $P -IP $IP)) { return }
 	$OldPrimary = ((irm "https://$IP/nitro/v1/config/hanode" -Method GET @params).hanode | ? state -eq "Primary" | select -First 1).ipaddress
 	$R = irm "https://$IP/nitro/v1/config/hafailover?action=force" -Method POST -Body (ConvertTo-Json @{"hafailover" = @{"force" = "true" } }) @params
+	if ($R.errorcode -ne 0) { Write-Host "Failover failed: $($R.message)" -F Red; return $false }
 	$R
 	if ($R.errorcode -eq 0 -and $OldPrimary) { KillSecondaryAAA -U $U -P $P -IP $IP -OldPrimary $OldPrimary }
 	Write-Host -f green "Failover Completed $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')"
@@ -660,9 +661,8 @@ Function PlanFailover($U, $P, $IP, $FOTime) {
 			$scriptPath = (Get-Item $PSCommandPath).FullName
 			$TaskName = "NetScaler_Planned_Forced_Failover_$IP"
 			@"
-`$log = Join-Path `$env:WINDIR 'Temp\NSFailover-$IP.log'
-Add-Content `$log "[`$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')] Scheduled task started"
-Start-Transcript `$log -Append
+`$log = Join-Path `$env:WINDIR "Temp\NSFailover-$IP-`$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+Start-Transcript `$log
 try {
     if ((Get-Date) -gt ([datetime]'$($selectedDateTime.ToString('s'))').AddMinutes(1)) { Write-Output 'Scheduled failover expired; skipping late execution'; exit 1 }
     & '$scriptPath' -Username '$U' -Password '$P' -IP '$IP' -FailoverNow
@@ -680,6 +680,7 @@ del `$PSCommandPath
 				$Task.Principal.RunLevel = 1
 				$Task.Settings.Enabled = $true
 				$Task.Settings.StartWhenAvailable = $true
+				$Task.Settings.ExecutionTimeLimit = 'PT5M'
 				$Trigger = $Task.Triggers.Create(1)
 				$Trigger.StartBoundary = $selectedDateTime.ToString('s')
 				$Action = $Task.Actions.Create(0)
