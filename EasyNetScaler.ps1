@@ -96,7 +96,7 @@ param(
 	[switch]$GuiChild
 )
 
-$ScriptVersion = '2.2.18'
+$ScriptVersion = '2.2.19'
 
 $putty = "$PSScriptRoot\putty.exe"
 $pscp = "$PSScriptRoot\pscp.exe"
@@ -618,18 +618,28 @@ Function KillSecondaryAAA {
 Function Failover {
 	param($U, $P, $IP)
 	If (!(Check -U $U -P $P -IP $IP -Port 443)) { throw "NetScaler HTTPS connection failed" }
-	HAStatus  -U $U -P $P -IP $IP
+	HAStatus -U $U -P $P -IP $IP
 	Write-Host -f yellow "Starting Failover $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')"
 	If (!(Login -U $U -P $P -IP $IP)) { throw "NITRO login failed" }
-	$OldPrimary = ((irm "https://$IP/nitro/v1/config/hanode" -Method GET @params).hanode | ? state -eq "Primary" | select -First 1).ipaddress
-	$R = irm "https://$IP/nitro/v1/config/hafailover?action=force" -Method POST -Body (ConvertTo-Json @{"hafailover" = @{"force" = $true } }) @params -EA 1
-	if ($R.errorcode -ne 0) { throw "Failover failed: $($R.message)" }
-	$R
-	if ($R.errorcode -eq 0 -and $OldPrimary) { KillSecondaryAAA -U $U -P $P -IP $IP -OldPrimary $OldPrimary }
-	Write-Host -f green "Failover Completed $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')"
-	HAStatus -U $U -P $P -IP $IP
+	$OldPrimary = ((irm "https://$IP/nitro/v1/config/hanode" -Method GET @params -EA 1).hanode | ? state -eq "Primary" | select -First 1).ipaddress
+	if (!$OldPrimary) { throw "Primary HA node not found" }
+	try {
+		$R = irm "https://$IP/nitro/v1/config/hafailover?action=force" -Method POST -Body (ConvertTo-Json @{"hafailover" = @{"force" = $true } }) @params -EA 1
+		if ($null -ne $R.errorcode -and $R.errorcode -ne 0) { Write-Host "NITRO response: $($R.errorcode) $($R.message)" -F Yellow }
+	}
+	catch { Write-Host "NITRO connection interrupted: $_" -F Yellow }
+	for ($i = 0; $i -lt 12; $i++) {
+		sleep 5
+		$ha = (irm "https://$IP/nitro/v1/config/hanode" -Method GET @params -EA 0).hanode
+		if ($ha | ? { $_.state -eq 'Primary' -and $_.ipaddress -ne $OldPrimary }) {
+			Write-Host -f green "Failover confirmed $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')"
+			KillSecondaryAAA -U $U -P $P -IP $IP -OldPrimary $OldPrimary
+			HAStatus -U $U -P $P -IP $IP
+			return
+		}
+	}
+	throw "Failover not confirmed: original primary $OldPrimary"
 }
-
 Function PlanFailover($U, $P, $IP, $FOTime) {
 	if (Check -U $U -P $P -IP $IP -Port 443) {
 		if ($FOTime) {
@@ -663,13 +673,20 @@ Function PlanFailover($U, $P, $IP, $FOTime) {
 			@"
 `$log = Join-Path `$env:WINDIR "Temp\NSFailover-$IP-`$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
 Start-Transcript `$log
+`$Result = 1
 try {
-    if ((Get-Date) -gt ([datetime]'$($selectedDateTime.ToString('s'))').AddMinutes(1)) { Write-Output 'Scheduled failover expired; skipping late execution'; exit 1 }
+    if ((Get-Date) -gt ([datetime]'$($selectedDateTime.ToString('s'))').AddMinutes(1)) { throw 'Scheduled failover expired; skipping late execution' }
     & '$scriptPath' -Username '$U' -Password '$P' -IP '$IP' -FailoverNow
-    if (!`$?) { Write-Output 'Failover script reported an error'; exit 1 }
-} catch { Write-Output "Scheduled failover exception: `$_"; exit 1 }
+    if (!`$?) { throw 'Failover script reported an error' }
+    `$Result = 0
+} catch { Write-Output "Scheduled failover exception: `$_" }
 finally { Stop-Transcript }
-del `$PSCommandPath
+if (`$Result -eq 0) {
+    schtasks.exe /delete /tn '$TaskName' /f
+    if (`$LASTEXITCODE -ne 0) { exit 1 }
+    del `$PSCommandPath -EA 0
+}
+exit `$Result
 "@ | Out-File $ENV:WINDIR\TEMP\NSForcedFailover-$IP.ps1
 			try {
 				$Scheduler = New-Object -ComObject Schedule.Service
