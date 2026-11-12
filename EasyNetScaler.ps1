@@ -617,13 +617,13 @@ Function KillSecondaryAAA {
 
 Function Failover {
 	param($U, $P, $IP)
-	If (!(Check -U $U -P $P -IP $IP -Port 443)) { return }
+	If (!(Check -U $U -P $P -IP $IP -Port 443)) { throw "NetScaler HTTPS connection failed" }
 	HAStatus  -U $U -P $P -IP $IP
 	Write-Host -f yellow "Starting Failover $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')"
-	If (!(Login -U $U -P $P -IP $IP)) { return }
+	If (!(Login -U $U -P $P -IP $IP)) { throw "NITRO login failed" }
 	$OldPrimary = ((irm "https://$IP/nitro/v1/config/hanode" -Method GET @params).hanode | ? state -eq "Primary" | select -First 1).ipaddress
-	$R = irm "https://$IP/nitro/v1/config/hafailover?action=force" -Method POST -Body (ConvertTo-Json @{"hafailover" = @{"force" = "true" } }) @params
-	if ($R.errorcode -ne 0) { Write-Host "Failover failed: $($R.message)" -F Red; return $false }
+	$R = irm "https://$IP/nitro/v1/config/hafailover?action=force" -Method POST -Body (ConvertTo-Json @{"hafailover" = @{"force" = $true } }) @params -EA 1
+	if ($R.errorcode -ne 0) { throw "Failover failed: $($R.message)" }
 	$R
 	if ($R.errorcode -eq 0 -and $OldPrimary) { KillSecondaryAAA -U $U -P $P -IP $IP -OldPrimary $OldPrimary }
 	Write-Host -f green "Failover Completed $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')"
