@@ -605,7 +605,9 @@ Function KillSecondaryAAA {
 			if (!(Login -U $U -P $P -IP $OldPrimary)) { return }
 			$R = irm "https://$OldPrimary/nitro/v1/config/aaasession?action=kill" -Method POST -Body (ConvertTo-Json @{aaasession = @{all = $true}}) @params
 			if ($R.errorcode -ne 0) { Write-Host "AAA session cleanup failed: $($R.message)" -F Red; return }
-			Write-Host "AAA sessions cleared on secondary node $OldPrimary" -F Green
+			$R = irm "https://$OldPrimary/nitro/v1/config/vpnicaconnection?action=kill" -Method POST -Body (ConvertTo-Json @{vpnicaconnection = @{all = $true}}) @params
+			if ($R.errorcode -ne 0) { Write-Host "ICA connection cleanup failed: $($R.message)" -F Red; return }
+			Write-Host "AAA sessions and ICA connections cleared on secondary node $OldPrimary" -F Green
 			return
 		}
 		sleep 5
