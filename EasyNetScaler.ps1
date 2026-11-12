@@ -633,8 +633,10 @@ Function Failover {
 		$ha = (irm "https://$IP/nitro/v1/config/hanode" -Method GET @params -EA 0).hanode
 		if ($ha | ? { $_.state -eq 'Primary' -and $_.ipaddress -ne $OldPrimary }) {
 			Write-Host -f green "Failover confirmed $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')"
-			KillSecondaryAAA -U $U -P $P -IP $IP -OldPrimary $OldPrimary
-			HAStatus -U $U -P $P -IP $IP
+			try { KillSecondaryAAA -U $U -P $P -IP $IP -OldPrimary $OldPrimary }
+			catch { Write-Host "AAA cleanup warning: $_" -F Yellow }
+			try { HAStatus -U $U -P $P -IP $IP }
+			catch { Write-Host "HA status output warning: $_" -F Yellow }
 			return
 		}
 	}
